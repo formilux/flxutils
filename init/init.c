@@ -1528,11 +1528,12 @@ int main(int argc, char **argv, char **envp) {
 		    return 1;
 		}
 		else if (res > 0) {
+		    int ret;
 		    print("<E>xec(parent) : waiting for termination\n");
-		    while (wait(&error) != res)
+		    while (((ret = wait(&error)) != -1) && (ret != res))
 			print("<E>xec(parent) : signal received\n");
 		    
-		    error = (WIFEXITED(error) > 0) ? WEXITSTATUS(error) : 1;
+		    error = (ret == -1) || ((WIFEXITED(error) > 0) ? WEXITSTATUS(error) : 1);
 		    print("<E>xec(parent) : child exited\n");
 		}
 		else {

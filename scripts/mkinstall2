@@ -1136,7 +1136,7 @@ while [ -n "$action" ] ; do
 	    #fi
 	    menu_pkg_dir
 	    list=( ); idx=0
-	    for pack in $(cd $PKGDIR && echo *.{prf,tgz}); do
+	    for pack in $(shopt -s nullglob ; cd $PKGDIR && echo *.{prf,tgz}); do
 		list[idx++]=$pack
 		list[idx++]=""
 		if [ -z "${pack##[0-9][0-9][0-9]_*}" ]; then

@@ -1,3 +1,7 @@
+2003/06/01:
+  - ignore dots : ne pas signer . et .. si ce n'est pas
+    forcé par parametre
+
 2002/06/18: 
   completly change
 

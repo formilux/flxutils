@@ -224,8 +224,8 @@ int browse_over_path(char *path, PROTO_FS(*fct), void *data) {
 /* build an MD5 checksum from data in file */
 char *checksum_md5_from_file(char *file) {
     int       fd;
-    size_t    size;
-    char      *checksum_md5 = 0, blk[BUFFER_LENGTH];
+    ssize_t   size;
+    char      *checksum_md5 = NULL, blk[BUFFER_LENGTH];
     MD5_CTX   md5_ctx;
     
     if ((fd = open(file, O_RDONLY)) < 0 ) {
@@ -236,8 +236,11 @@ char *checksum_md5_from_file(char *file) {
 	while ((size = read(fd, blk, BUFFER_LENGTH)) > 0)
 	    MD5_Update(&md5_ctx, blk, size);
 	close(fd);
-	checksum_md5 = MALLOC(16);
-	MD5_Final(checksum_md5, &md5_ctx);
+        // if size = -1, there is a read error, don't do anything
+        if (size == 0) { // last read is null
+	    checksum_md5 = MALLOC(16);
+	    MD5_Final(checksum_md5, &md5_ctx);
+        }
     }
     return (checksum_md5);
 }

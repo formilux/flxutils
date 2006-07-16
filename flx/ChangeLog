@@ -1,3 +1,5 @@
+2003/06/05 : Version 0.6.7
+- segfault on /proc directory : size_t -> ssize_t
 2003/01/04 : Version 0.6.6c
 - Before a crash disk, I 
 2001/12/23 : Version 0.3
