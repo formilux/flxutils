@@ -112,7 +112,7 @@ function main {
                 packages=""
             fi
         fi
-        if [ "$packages" ] ; then    # des packages potenties de source ont été donnés
+        if [ "$packages" ] ; then    # des packages potentiels de source ont été donnés
             echo -n \# >&2 
             REPLY=""
         elif [ $SILENT = 0 -a ${#sources[*]} = 0 ] ; then    # le fichier n'a été trouvé dans aucun package
@@ -132,17 +132,13 @@ function main {
         fi
         if [ "$REPLY" ] ; then
             pkgname=$( basename $REPLY .lst ) 
-            matchlist=$pkgname,${pkgname%-*},${pkgname%-*-*},${pkgname%%-*}
+            matchlist=$pkgname,${pkgname%-*},${pkgname%-*-*},${pkgname%%[._-][0-9]*}
             echo $file $matchlist >> $TMPDIR/OUTPUT
         else
             echo $file $packages >> $TMPDIR/OUTPUT
         fi
     done < $LFILES
 }
-
-# repertoire contenant les .lst et les .tgz servant de source
-SEARCHPATH=$PKGROOT
-SEARCHPATH=${SEARCHPATH:-.}
 
 # temporary file and directory
 TMP=$(date +%y%m%d)-$RANDOM
@@ -211,6 +207,10 @@ while [ $# -gt 0 ] ; do
     esac
     shift
 done
+
+# repertoire contenant les .lst et les .tgz servant de source
+SEARCHPATH=${SEARCHPATH:-${PKGROOT:+$PKGROOT/.}}
+SEARCHPATH=${SEARCHPATH:-.}
 
 if [ $PRINTUSAGE -gt 0 ]; then
     # affiche les lignes du case ci-dessus

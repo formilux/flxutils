@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# /usr/sbin/pkg - Formilux source package manager - version 0.2.2 - 2003-02-14
+# /usr/sbin/pkg - Formilux source package manager - version 0.2.3 - 2003-03-20
 #
 # Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
@@ -281,7 +281,15 @@ function do_pack_files {
   echo "done."
 
   echo -n "Creating $PKGROOT/$packver.lst ... "
-  (flx sign --no-depth --ignore-dot `cut -f1 -d' ' $FILE_LIST|sed -e 's,/$,,'` > $PKGROOT/$packver.lst) > /dev/null 2>&1
+  # we try the special case of the '.' entry which is needed to set the root permissions.
+  # this entry must be set as "." in FILE_LIST.
+  if grep -q '^.[ 	]' $FILE_LIST; then
+     set -- $(grep '^.[ 	]' $FILE_LIST)
+     owner=${2%%:*}
+     group=${2##*:}
+     echo "d $3 $owner $group          0 -------------------------------- 0 ."
+  fi > $PKGROOT/$packver.lst
+  (flx sign --no-depth --ignore-dot `cut -f1 -d' ' $FILE_LIST|sed -e 's,/$,,'` >> $PKGROOT/$packver.lst) > /dev/null 2>&1
   echo "done."
 
   F=$PKGROOT/$packver.$PKGSUFF
@@ -523,10 +531,10 @@ elif [ "$type" != "source_only" ] ; then
     fi
 
     case "$FLXARCH" in
-        i686) arch=i686 cpu=i686 ;;
-        i486) arch=i486 cpu=i486 ;;
-        i386) arch=i386 cpu=i386 ;;
-        *)    arch=i586 cpu=i686 ;;
+        i686) arch=i686 cpu=i686 basearch=i386 ;;
+        i486) arch=i486 cpu=i486 basearch=i386 ;;
+        i386) arch=i386 cpu=i386 basearch=i386 ;;
+        *)    arch=i586 cpu=i686 basearch=i386 ;;
     esac
 
     if [ -z "$FLXMAKE" ]; then

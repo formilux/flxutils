@@ -1,0 +1,587 @@
+#!/bin/sh
+
+# This function collects some information in /proc and other places.
+# It should be called ASAP.
+
+function init {
+  #umount /mnt/cdrom >/dev/null 2>&1 # to avoid stupid recursive copying !
+  CDROMS=$(grep -i '^drive name:' /proc/sys/dev/cdrom/info |cut -f2- -d:)
+}
+
+# user interface functions
+function ask {
+        echo -n "$1 [$2] : "; read 
+        if [ "$REPLY" = "" ]; then REPLY=$2; fi
+}
+
+function yesno {
+        echo -n "$1 [$2] : "; read ; REPLY=`echo $REPLY | cut -c1`
+        if [ "$REPLY" = "" ]; then REPLY=$2; fi
+        if [ "$REPLY" = o -o "$REPLY" = y -o "$REPLY" = Y ]; then
+           REPLY="y"
+        fi
+}
+
+#
+function check_directories {
+ if [ ! -d $ROOTDIR/etc/. ] ; then
+   if [ -d $ROOTDIR/boot/etc/. ] ; then 
+     ln -s boot/etc $ROOTDIR/etc
+   else 
+     echo "Can't find 'etc' directory neither in '/' nor in '/boot'"
+     return 1
+   fi
+ fi
+ if [ ! -d $ROOTDIR/var/. ] ; then 
+   mkdir $ROOTDIR/var ; fi
+ if [ ! -d $ROOTDIR/var/tmp ] ; then 
+   mkdir $ROOTDIR/var/tmp ; chmod 1777 $ROOTDIR/var/tmp ; fi
+ if [ ! -d $ROOTDIR/var/run ] ; then 
+   mkdir $ROOTDIR/var/run ; fi
+ if [ ! -d $ROOTDIR/var/spool ] ; then 
+   mkdir $ROOTDIR/var/spool ; fi
+ if [ ! -d $ROOTDIR/var/log ] ; then 
+   mkdir $ROOTDIR/var/log ; fi
+ if [ ! -d $ROOTDIR/var/cache ] ; then 
+   mkdir $ROOTDIR/var/cache ; fi
+ if [ ! -d $ROOTDIR/var/adm/. ] ; then 
+   ln -s log $ROOTDIR/var/adm ; fi
+
+ return 0
+}
+
+# this function lists all hard drives found, but hides CDROMs
+function list_disks {
+  for i in `tail +3 /proc/partitions | awk '{print $4}' | grep '\([a-zA-Z]$\)\|\(c[0-9]*d[0-9]*$\)'`; do
+    if ! echo $CDROMS | grep -qw $i; then
+       echo $i
+    fi
+  done
+}
+
+function setup_part {
+
+ if [ -e /tmp/devmap -a -e /tmp/fstab ]; then
+   echo "Filesystems are currently configured this way :"
+   for i in `cut -f1 -d' ' /tmp/devmap`; do grep "^$i[ 	]" /tmp/fstab | awk '{print $1 " => " $2 }'; done
+   echo "-- end of list --"
+   yesno "Do you want to change something (y/n) ?" "n"
+   if [ "$REPLY" != "y" ]; then return 0; fi
+   cp /tmp/fstab /tmp/fstab-
+   cp /tmp/devmap /tmp/devmap-
+ else
+   touch /tmp/fstab- /tmp/devmap-
+ fi
+
+ # clean temporary files
+ rm -rf /tmp/temp.$$ /tmp/fstab /tmp/devmap
+
+ # unmount previously mounted file-systems
+ for part in $(grep " $ROOTDIR" /proc/mounts|awk '{print $2}'|sort -r); do
+   umount $part;
+ done
+
+ echo "/proc		/proc		proc	defaults			0 0" >> /tmp/fstab
+ echo "/dev		/dev		tmpfs	size=0,nr_inodes=4096,,remount	0 0" >> /tmp/fstab
+ echo "/dev/pts		/dev/pts	devpts	defaults			0 0" >> /tmp/fstab
+ echo "/dev/cdrom	/mnt/cdrom	iso9660	defaults,noauto,ro,user		0 0" >> /tmp/fstab
+
+ echo "/dev/$(readlink /dev/cdrom) /dev/cdrom" >> /tmp/devmap 
+
+ # scan all disk
+ for disk in $(list_disks); do
+   # look for all detected partitions
+   for spart in `sfdisk -l /dev/$disk 2>/dev/null | grep "^/" |tr '*' ' '| cut -f3- -d'/' | awk '{print $1 ":" $6 }'` ; do
+     # partition name
+     part=`echo $spart|cut -f1 -d:`
+     set -- `echo $spart | tr ':' ' '`
+     set -- $* `fdisk -s /dev/$1` `sfdisk -l /dev/$disk 2>/dev/null | grep "/dev/$1 " | cut -c15-`
+
+     # hide mounted partitions
+     part=/dev/$part
+     if grep -q "$part " /proc/mounts > /dev/null ; then continue ; fi
+
+     # hide empty or extended partitions
+     if [ $2 = 0 -o $2 = 5 ] ; then continue ; fi
+
+     # partition size in Mega Bytes
+     size=$[ $3 / 1024]
+     # partition type in human readable form
+     type=$2
+     shift 8
+     htype=$* 
+     
+     # redo while not a good value
+     askagain=y
+     unset mountpoint
+     while [ "$askagain" = "y" ] ; do
+       askagain=n
+       echo 
+       echo "Partition : $part ($htype, ${size} MB)"
+
+       # non linux partition
+       if [ $type != 82 -a $type != 83 -a $type != 8e -a $type != fd ] ; then 
+         yesno "$part isn't a standard linux partition, would you like an entry in /etc/fstab (y/n)?" "n"
+         if [ "$REPLY" = "n" ] ; then continue ; fi
+	 fstype=noauto
+       else
+         fstype=auto
+       fi
+ 
+       # getting mount point
+       if [ $type = 82 ] ; then
+         mountpoint=swap
+       else
+         mountpoint=$(grep "^$part[ 	]" /tmp/fstab- | awk '{print $2 }')
+       fi
+       ask "  Choose a mount point (swap,/,/boot,/var,...) or [Enter] for none" "$mountpoint"
+       # remove useless leading and trailing slashes
+       mountpoint=$(echo $REPLY|sed 's@^\([/]*\)\(/.*\)$@\2@'|sed 's@^\(.*[^/]\)\([/]*\)$@\1@')
+       if [ -z "$mountpoint" ] ; then break ; fi
+
+       case "$mountpoint" in
+         /)     echo "$part /dev/root" >> /tmp/devmap ;;
+         /boot) echo "$part /dev/boot" >> /tmp/devmap ;;
+         swap)  echo "$part /dev/swap" >> /tmp/devmap ; echo "$part	swap	swap	defaults	0 0" >> /tmp/fstab;;
+         *)     echo "$part /dev/fs/$(echo ${mountpoint#/} |tr '/' '.')" >> /tmp/devmap ;;
+       esac
+
+       formatcmd=''
+       # format linux partitions
+       if [ $type = 82 -o $type = 83 -o $type = 8e -o $type = fd ] ; then 
+         # tell how to format
+         echo "  0: -- DO NOT format this partition (default) --" ; ch=0
+         if [ "$mountpoint" = "swap" ] ; then 
+           ch1="mkswap $part" ; echo " >1: $ch1"
+           ch2="mkswap -c $part" ; echo "  2: $ch2 (with check)"
+	 elif [ "`echo $mountpoint|cut -c1`" = "/" ] ; then
+           ch1="mke2fs -b 1024 -m 1 -s 1 $part"
+           if [ "$size" -lt 64 ]; then
+              echo " >1: $ch1 (small ext2)"
+           else
+              echo "  1: $ch1 (small ext2)"
+           fi
+           ch2="mke2fs -b 4096 -s 1 $part" ; echo "  2: $ch2 (large ext2)"
+           ch3="mke2fs -b 4096 -s 1 -j $part"
+           if [ "$size" -ge 64 ]; then
+              echo " >3: $ch3 (ext3)"
+           else
+              echo "  3: $ch3 (ext3)"
+           fi
+           ch4="mkreiserfs -h r5 $part" ; echo "  4: $ch4 (reiserfs)"
+         fi
+         ask "  Select a format method or enter the complete command" "$ch"
+         case $REPLY in
+           0)     formatcmd='' ;;
+           [1-9]) formatcmd=`eval echo '\$ch'$REPLY` ;;
+           *)     formatcmd=$REPLY ;;
+         esac
+       fi
+     done
+     
+     # execute format
+     if [ "$formatcmd" ] ; then
+       echo -n "Doing: '$formatcmd': "
+       eval "echo y | $formatcmd" > /tmp/error.$$ 2>&1
+       if [ "$?" = "0" ] ; then 
+         echo "done."
+       else 
+         echo "failed."
+         echo "--------------------------------------------------------"
+         echo "$formatcmd said:"
+         sed -e "s/^/>> /" /tmp/error.$$
+         echo "----------- Filesystem will not be mounted -------------"
+         mountpoint=""
+       fi 
+     fi
+     if [ "`echo $mountpoint|cut -c1`" = "/" ] ; then
+       echo "$mountpoint -t $fstype $part" >> /tmp/temp.$$
+     fi
+   done 
+ done
+
+ # now we will mount all the filesystems we have just created, and add them to fstab
+ sort /tmp/temp.$$ | while read ; do
+   set -- $REPLY
+   mp=$1 ; shift
+   if [ ! -d $ROOTDIR$mp ] ; then mkdir -p $ROOTDIR$mp ; echo "Creating directory $mp" ; fi
+   if [ $2 != noauto ] ; then 
+     echo -n "Mounting $mp ($3): "
+     mount -n $* $ROOTDIR$mp > /dev/null 2>&1 
+     if [ "$?" = "0" ] ; then echo "done." ; else
+       echo "failed."
+       echo "##failed## $3	$mp	$2	defaults	1 1" >> /tmp/fstab
+     fi
+   else 
+     echo "#$3	$1      	auto		defaults	0 0" >> /tmp/fstab
+   fi
+ done
+ mount | grep '^[ 	]*/' | grep "$ROOTDIR[/ 	]" | sed "s@$ROOTDIR[/]*@/@" | \
+   awk '{ printf "%s\t%s\t%s\tdefaults%s\t1 %s\n",$1,$3,$5,($3=="/" || $3=="/boot")?",ro":"",($3=="/")?"1":"2" }' >> /tmp/fstab
+ #grep '^/' /proc/swaps | awk '{ print $1 "\tswap       \tswap       \tdefault	0 0"}' >> /tmp/fstab
+
+ mkdir -p -m 0755 $ROOTDIR/dev $ROOTDIR/proc $ROOTDIR/etc $ROOTDIR/mnt/cdrom
+ mount -t proc proc $ROOTDIR/proc  # may be needed for compressed files
+
+### sed -e "s,^#L.*cdrom\$,ln ` readlink /dev/cdrom` /dev/cdrom," < /.preinit > $ROOTDIR/.preinit
+
+ rm -f /tmp/temp.$$
+ return 0
+}
+
+function setup_keyboard {
+ sed -n '/^service keyboard/,/^ *$/p' < /etc/config.rc
+}
+
+function setup_mouse {
+ sed -n '/^service mouse/,/^ *$/p' < /etc/config.rc
+}
+
+function setup_network {
+ echo "# hostname formilux"
+ echo "# interface eth0"
+ echo "#    ip address 10.101.20.4/16"
+ echo "#    ip dhcp"
+ echo "# service network"
+}
+
+# (re)build config.rc, startup.rc, fstab, devmap, lilo.conf
+function setup_config {
+  local MNT="$1"
+  local MPWD=$PWD
+  local TMP=/tmp/newconf
+
+  if [ ! -w /tmp ] ; then
+    echo "Directory /tmp not writable"; exit 1
+  fi
+
+  mkdir -p $TMP >/dev/null 2>&1
+
+  if [ "$MNT" = "" ] ; then MNT="$ROOTDIR"; fi
+
+# copy startup.rc and config.rc
+  rm -f $TMP/config.rc $TMP/startup.rc
+  if [ "$UPDATE_ONLY" != "y" -o ! -e $MNT/etc/config.rc ]; then
+    echo           >> $TMP/config.rc
+    echo "# service syslogd" >> $TMP/config.rc
+    echo           >> $TMP/config.rc
+    setup_network  >> $TMP/config.rc
+    echo           >> $TMP/config.rc
+    setup_keyboard >> $TMP/config.rc
+    setup_mouse    >> $TMP/config.rc
+    chmod 644 $TMP/config.rc
+  fi
+
+  if [ "$UPDATE_ONLY" != "y" -o ! -e $MNT/etc/startup.rc ]; then
+    echo "#!/bin/sh" >> $TMP/startup.rc
+    echo "echo -n \"Default configuration ... \" " >> $TMP/startup.rc
+    echo "/sbin/init.d/sysprofiles /etc/config.rc" >> $TMP/startup.rc
+    chmod 755 $TMP/startup.rc
+  fi
+
+# copy fstab
+  cp /tmp/fstab $TMP/fstab
+
+# copy devmap
+  BOOTDEV=${BOOTDEV:-`echo $ROOTDEV | sed 's/[0-9]\+$//'`}
+  ask "Choose device on which LILO will be installed " $BOOTDEV
+  BOOTDEV=$REPLY
+  grep -v '/dev/mbr$' /tmp/devmap > $TMP/devmap
+  echo "$BOOTDEV /dev/mbr" >> $TMP/devmap
+
+# build a new lilo.conf 
+  cd $MNT
+
+  KERNVER=`ls boot/*/bzImage | tail -1 | cut -f2 -d/`
+  KERNLBL=`echo $KERNVER | tr -d '.-'`
+  cat > $TMP/lilo.conf <<EOF
+serial = 0,9600n8
+boot = $BOOTDEV
+default = l$KERNLBL
+EOF
+
+  for bootimg in `ls boot/*/bzImage` ; do
+    echo "image = /$bootimg" >> $TMP/lilo.conf
+    echo "  label = l`echo $bootimg | cut -f2 -d/ | tr -d '.-'`" >> $TMP/lilo.conf
+    echo "  append = \"root=$ROOTDEV\"" >> $TMP/lilo.conf
+    echo "  read-only" >> $TMP/lilo.conf
+  done
+
+  if [ `grep "label =" $TMP/lilo.conf | wc -l` = 0 ]; then
+    echo
+    echo "WARNING!!! no kernel was found in $MNT/boot !!!"
+    echo "You must install a kernel and edit $TMP/lilo.conf or your system will never boot."
+    echo
+    sleep 1
+  fi
+
+# copy /.preinit
+  if [ -e $MNT/.preinit -a "$UPDATE_ONLY" = "y" ]; then
+    cp $MNT/.preinit $TMP/.preinit
+  else
+    cp /.preinit $TMP/.preinit
+  fi
+
+  # 1st complicated part : merge old and new fstab.
+  # Method:
+  #  - mount points only in old fstab are kept as-is
+  #  - mount points in both with same types only have their dev updated
+  #  - mount points in both with diff types are fully updated
+  #  - mount points only in new fstab are merged
+  if [ "$UPDATE_ONLY" = "y" -a -e $MNT/etc/fstab ]; then
+    rm -f $TMP/fstab
+    while read; do 
+      set -- $REPLY
+      if ! grep -q "^[^ 	]\+[ 	]\+${2}[ 	]" /tmp/fstab; then
+        # not found
+	echo "$REPLY" >> $TMP/fstab
+      elif ! grep -q "^[^ 	]\+[ 	]\+${2}[ 	]\+${3}[ 	]" /tmp/fstab; then
+        # not found with the same type
+        echo "##old##$REPLY" >> $TMP/fstab 
+        grep "^[^ 	]\+[ 	]\+${2}[ 	]" /tmp/fstab >> $TMP/fstab
+      else
+        # found with the same type. We may have to update the device
+        dev=`grep "^[^# 	]\+[ 	]\+${2}[ 	]" /tmp/fstab|head -1|awk '{print $1}'`
+        if [ "$dev" -a "$dev" != "$1" ]; then
+           echo "##old##$REPLY" >> $TMP/fstab 
+           echo "$dev	$2	$3	$4	$5 $6" >> $TMP/fstab  # keep options
+        else
+           echo "$REPLY" >> $TMP/fstab  # was commented or the same
+        fi
+      fi 
+    done < $MNT/etc/fstab
+
+    # add new entries
+    while read; do 
+      set -- $REPLY
+      if ! grep -q "^[^ 	]\+[ 	]\+${2}[ 	]" $TMP/fstab; then
+	echo "$REPLY" >> $TMP/fstab
+      fi 
+    done < /tmp/fstab
+  fi
+
+  # try to update lilo.conf
+
+  if [ -e $MNT/etc/lilo.conf -a "$UPDATE_ONLY" = "y" ]; then
+    rm -f $TMP/lilo.conf
+    if grep -q "^image.*$KERNVER" $MNT/etc/lilo.conf; then
+      # the latest kernel is referenced. We can use this conf.
+      (echo "boot = $BOOTDEV" ; grep -v "^boot[ 	]*=[ 	]*$BOOTDEV" $MNT/etc/lilo.conf | sed 's/^\(boot[ 	]*=\)/##old##\1/') > $TMP/lilo.conf
+    else
+      # the latest kernel is missing from lilo.conf.
+      (echo "boot = $BOOTDEV" ; grep -v "^boot[ 	]*=[ 	]*$BOOTDEV" $MNT/etc/lilo.conf | sed 's/^\(boot[ 	]*=\)/##old##\1/') | sed -e 's:^\(image.*=[^/]*/boot/\)\([^/]*\)\(/.*\)$:\1'$KERNVER'\3:' > $TMP/lilo.conf
+    fi
+  fi
+ 
+  # now, we may have to update .preinit to create aliased entries.
+  # we remove all references to devices that have been updated
+
+  grep -v "^[#]*\(ln\|L\).*[ 	]\+\($(echo `cut -f2 -d' ' $TMP/devmap`|sed 's@ @\\|@g')\)" $TMP/.preinit > $TMP/.preinit-
+  grep -v ' /dev/fs/' $TMP/devmap | sed 's@^/dev/@ln @' >> $TMP/.preinit-
+  if grep -q ' /dev/fs' $TMP/devmap; then
+    if ! grep -q "^\(md\|M\)[ 	]\+/dev/fs" $TMP/.preinit-; then
+       echo "md /dev/fs 755" >> $TMP/.preinit-
+    fi
+    grep ' /dev/fs/' $TMP/devmap | sed 's@^/dev@ln ..@' >> $TMP/.preinit-
+  fi
+  mv $TMP/.preinit- $TMP/.preinit ; chmod 711 $TMP/.preinit
+
+  rm -f $TMP/passwd
+  if [ "$UPDATE_ONLY" != "y" -o ! -e $MNT/etc/passwd ]; then
+    sed -e 's@/home/admin@/root@' < /etc/passwd |grep -v '^\(squid:\|pdnsd:\|flx:\|install:\)' > $TMP/passwd
+    chmod 644 $TMP/passwd
+  fi
+
+  # if /var is on its own filesystem, /tmp must be a true filesystem too.
+  if grep -q ' \(/dev/fs/var\|/dev/fs/var\.tmp\)$' $TMP/devmap; then
+    if ! grep -q "^[^ 	]\+[ 	]\+/tmp[ 	]" $TMP/fstab; then
+      echo "/tmp		/tmp	tmpfs	defaults	0 0" >> $TMP/fstab
+    fi 
+  fi 
+       
+  cd $MPWD
+  return 0
+}
+
+function apply_config {
+  local MNT=$1
+  local TMP=/tmp/newconf
+
+  [ -e $TMP/.preinit ]   && (rm -f $MNT/.preinit       ; cp -p $TMP/.preinit   $MNT)
+  [ -e $TMP/passwd ]     && (rm -f $MNT/etc/passwd     ; cp -p $TMP/passwd     $MNT/etc)
+  [ -e $TMP/lilo.conf ]  && (rm -f $MNT/etc/lilo.conf  ; cp -p $TMP/lilo.conf  $MNT/etc)
+  [ -e $TMP/fstab ]      && (rm -f $MNT/etc/fstab      ; cp -p $TMP/fstab      $MNT/etc)
+  [ -e $TMP/config.rc ]  && (rm -f $MNT/etc/config.rc  ; cp -p $TMP/config.rc  $MNT/etc)
+  [ -e $TMP/startup.rc ] && (rm -f $MNT/etc/startup.rc ; cp -p $TMP/startup.rc $MNT/etc)
+
+  # replace /tmp with a directory if needed
+  if grep -q "^[^ 	]\+[ 	]\+/tmp[ 	]" $TMP/fstab; then
+    if [ -L $MNT/tmp ]; then rm -f $MNT/tmp && mkdir -m 1777 $MNT/tmp >/dev/null 2>&1; fi
+  fi 
+  return 0
+}
+
+function do_lilo {
+  if [ -e $ROOTDIR/dev -a -e $ROOTDIR/.preinit -a -e $ROOTDIR/etc/lilo.conf ]; then
+    chroot $ROOTDIR /.preinit rebuild
+    chroot $ROOTDIR /sbin/lilo || lilo -r $ROOTDIR
+    umount $ROOTDIR/dev  # remove what .preinit has installed
+  else
+    echo "LILO has NOT been run because it needs /dev, /.preinit, and /etc/lilo.conf"
+  fi
+  return 0
+}
+
+
+
+# main
+
+init
+
+if [ $0 = "mkdisk" ] ; then setup_part && exit 0 ; exit 1 ; 
+elif [ $0 = "mkconfig" ] ; then setup_config $1 && exit 0 ; exit 1 ; 
+elif [ $0 = "doconfig" ] ; then apply_config $1 && exit 0 ; exit 1 ; 
+fi
+
+end=0
+while [ $# -ge 1 -a "$end" -ne 1 ] ; do
+  case $1 in
+    --disk) setup_part;;
+    --config) setup_config $2; shift;;
+    --apply) apply_config $2; shift;;
+    --) end=1;;
+    *) end=1;; 
+  esac
+  if [ "$end" -eq 1 ] ; then break ; fi
+  shift
+done
+
+ROOTDIR=/mnt/disk
+PKGDIR=/home/pkg
+SHELLDIR=/
+
+action=1
+while [ "$action" != "q" -a "$action" != "Q" ] ; do
+  
+  ROOTDEV=`mount | grep " on $ROOTDIR " | cut -f1 -d' '`
+  
+  echo
+  echo "Possible actions are :"
+  echo "1: Run fdisk"
+  echo "2: Setup filesystems"
+  echo "3: Install packages"
+  echo "4: Build running config"
+  echo "5: Save built config for next reboot"
+  echo "6: Run lilo"
+  echo "7: Unmount all"
+  echo "s: Shell"
+  echo "q: Quit"
+
+  ask "Select an action (1..7/s/q)" "$action"
+
+  if [ "$REPLY" = "q" -o "$REPLY" = "Q" ] ; then break; fi
+  if [ "$REPLY" = "s" -o "$REPLY" = "S" ] ; then (cd $SHELLDIR; pwd; sh -i); REPLY=$action; continue; fi
+
+  action=`expr $REPLY + 1`
+  if [ "$action" = 8 ] ; then action=q ; fi
+  echo
+  case $REPLY in
+    1) 
+      # unmount previously mounted file-systems
+      for part in $(grep " $ROOTDIR" /proc/mounts|awk '{print $2}'|sort -r); do umount $part; done
+
+      for disk in $(list_disks); do
+        sfdisk -l /dev/$disk
+        yesno "Clear partition table for '/dev/$disk' (y/n)?" "n"
+        if [ "$REPLY" = "y" ] ; then
+          dd if=/dev/zero of=/dev/$disk bs=1024 count=1 > /dev/null 2>&1
+          (echo o ; echo w ) | fdisk /dev/$disk > /dev/null 2>&1
+        fi
+        yesno "Run 'fdisk' for '/dev/$disk' (y/n)" "y"
+        if [ "$REPLY" = "y" ] ; then
+          fdisk /dev/$disk
+        fi
+      done 
+      SHELLDIR=/
+      ;;
+    2) 
+      setup_part 
+      SHELLDIR=/
+      ;;
+    3) 
+      cd /
+      if [ "$ROOTDEV" != "" ] ; then
+        ask "Packages directory, or files pattern ($PKGDIR, $PKGDIR/*.lst, *.prf, *.tgz)"$'\n'"   " $PKGDIR ; PKGDIR="$REPLY"
+        if [ -d "$PKGDIR" ]; then
+          list=`cd $PKGDIR && ls *.prf *.lst *.tgz 2>/dev/null`
+        else
+          list=`basename "$PKGDIR"`
+          PKGDIR=`dirname "$PKGDIR"`
+          list=$(cd $PKGDIR && echo $list)
+        fi
+	echo "Package list :"; (cd $PKGDIR && ls $list); echo
+        for pack in $list ; do
+          ask "Install package '$pack' (y/n/./<other dest>) ?" "y"
+          INSTDIR=/
+          if [ "`echo $REPLY | cut -c1`" = "/" ] ; then INSTDIR=$REPLY ; fi
+	  if [ "$REPLY" = "." ]; then break; fi
+          if [ "$REPLY" != "n" -a "$REPLY" != "N" ] ; then
+            case "$pack" in
+              *lst) cat $PKGDIR/$pack | xargs cp --target-directory=$ROOTDIR$INSTDIR -p --parents -d -R -x ;;
+              *tgz) mkdir -p -m 0755 $ROOTDIR$INSTDIR && tar zpxf $PKGDIR/$pack -C $ROOTDIR$INSTDIR ;;
+              *prf) flxextract -R $ROOTDIR$INSTDIR -i $PKGDIR/$pack ;;
+            esac
+          fi
+        done 
+        check_directories || exit 1
+      fi
+      SHELLDIR=/
+      ;;
+    4) 
+      check_directories || exit 1
+      if [ "$UPDATE_ONLY" != "n" -a "$UPDATE_ONLY" != "y" ]; then
+      echo "Existing files can be REPLACED or UPDATED."
+        yesno "Do you prefer to UPDATE existing files (y/n) ?" "y"
+        UPDATE_ONLY="$REPLY"
+      fi
+      setup_config $ROOTDIR 
+      echo "done."
+      echo "New files have been written to /tmp/newconf/"
+      echo "You can check them now by starting a shell."
+      SHELLDIR=/tmp/newconf
+      (cd $SHELLDIR ; ls -lart)
+      ;;
+    5)
+      echo "Saving config (.preinit, startup.rc, config.rc, fstab, lilo.conf, passwd)"
+      apply_config $ROOTDIR 
+      echo "Saving config ... done."
+      echo "Updating dynamic files (/etc/formilux/sig.dat, /etc/ld.so.cache) ... "
+      ldconfig -r $ROOTDIR > /dev/null 2>&1 
+
+      for SYSTEMMAP in `echo $ROOTDIR/boot/System.map-*`; do
+        KERNVER=${SYSTEMMAP#$ROOTDIR/boot/System.map-}
+        chroot $ROOTDIR depmod -a -F /boot/System.map-$KERNVER $KERNVER
+      done
+
+      echo "Signing the filesystem... (this may take a while)"
+      cd $ROOTDIR ; signfs -x `mount|grep -v ' type \(tmpfs\|ramfs\)'|grep "^/.* $ROOTDIR "| \
+         sed "s@^.*$ROOTDIR\([^ ]*\) .*@.\1@"` > /etc/formilux/sig.dat
+      echo "Updating dynamic files ... done."
+      SHELLDIR=/
+      ;;
+    6)
+      do_lilo
+      SHELLDIR=/
+      ;;
+    7)
+      cd /
+      for mp in `grep "$ROOTDIR" /proc/mounts | cut -f2 -d' ' | sort -r` ; do
+        umount -n $mp
+      done 
+      SHELLDIR=/
+      ;;
+    *) 
+      ;;
+  esac
+done
+

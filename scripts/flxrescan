@@ -7,7 +7,11 @@ function main {
     # le fichier si cela est possible
     while read file packages; do 
         echo -n \# >&2
-        if [ -z "$packages" ] ; then echo "##no package## $file" >> $LOGFILE ; continue ; fi
+        if [ -z "$packages" ] ; then
+	    echo "##no package## $file" >> $LOGFILE
+	    echo "$file" >> $TMPDIR/OUTPUT
+	    continue
+	fi
 
 	for pack in ${packages//,/ }; do
 	    pkgsrc=$(find $SEARCHPATH -name ${pack}'*'.lst | head -1)
@@ -16,34 +20,22 @@ function main {
 
 	if [ -z "$pkgsrc" ]; then
             echo "##no package## $file $packages" >> $LOGFILE
+	    echo "$file $packages" >> $TMPDIR/OUTPUT
 	    continue
         fi
 
 	set -- $( grep "$file" $pkgsrc | awk '{ if ($8=="'$file'") print $0; }' )
 	if [ -z "$*" ]; then
-	    echo "##not found## $file $pkgsrc" >> $LOGFILE
+	    pkgsrc=$( basename $pkgsrc .lst ) 
+	    echo "##not found## $file $pkgsrc,${pkgsrc%-*},${pkgsrc%-*-*},${pkgsrc%%[._-][0-9]*}" >> $LOGFILE
+	    echo "$file $packages" >> $TMPDIR/OUTPUT
             continue
         fi
-        if [ "x$1" = "xd" ]; then
-	    # it's a directory
-            rm -f $ROOTDIR/$8 >/dev/null 2>&1 # just in case it was something else
-	    mkdir -p $ROOTDIR/$8
-	    touch -t `date -d "Jan 1 00:00:$7 UTC 1970" +"%Y%m%d%H%M.%S" ` $ROOTDIR/$8
-   	    chown $3:$4 $ROOTDIR/$8
-   	    chmod $2 $ROOTDIR/$8
-	    echo "$8/" >> $LOGFILE
-        else
-	    # it's a regular file
-	    echo $8 $pkgsrc >> $SFILES
-        fi
-    done < $LFILES
 
-    echo >&2 ; echo -n "Extracting files ..." >&2
-    for lst in $( awk '{print $2}' $SFILES | sort -u ) ; do
-        tgz="$(dirname $lst)/$(basename $lst .lst).tgz"
-        grep -- " $lst$" $SFILES | awk '{print $1}' | tar zUxpvf $tgz -C $ROOTDIR -T - >> $LOGFILE
-	echo -n "." >&2
-    done
+	pkgsrc=$( basename $pkgsrc .lst ) 
+	echo $file $pkgsrc,${pkgsrc%-*},${pkgsrc%-*-*},${pkgsrc%%[._-][0-9]*} >> $TMPDIR/OUTPUT
+	echo $file $pkgsrc,${pkgsrc%-*},${pkgsrc%-*-*},${pkgsrc%%[._-][0-9]*} >> $LOGFILE
+    done < $LFILES
     echo "." >&2
 }
 
@@ -61,9 +53,17 @@ fi
 
 while [ $# -gt 0 ] ; do
     case "$1" in 
-        -i) # <infile> fichiers sources des autres fichiers
+        -i) # <infile> fichierssources des autres fichiers
             [ "$2" ] || PRINTUSAGE=1
             INPUT=( $INPUT $2 )
+            shift;
+            ;; 
+        -u) # update first source file with results
+            UPDATE=1
+            ;;
+        -o) # <outfile> fichier destination remis a jour
+            [ "$2" ] || PRINTUSAGE=1
+            OUTPUT=$2
             shift;
             ;; 
         -l) # <logfile> fichier de reference pour les associations fichier/package
@@ -74,11 +74,6 @@ while [ $# -gt 0 ] ; do
         -p) # <pkgdir> repertoire de recherche pour les packages
             [ "$2" ] || PRINTUSAGE=1
             SEARCHPATH="$SEARCHPATH $2/."
-            shift
-            ;;
-        -R) # <destdir> répertoire d'extraction pour les fichiers
-            [ "$2" ] || PRINTUSAGE=1
-            ROOTDIR="$2"
             shift
             ;;
         -h) # affiche l'aide sur les paramètres
@@ -101,21 +96,13 @@ if [ $PRINTUSAGE -gt 0 ]; then
     exit 1
 fi
 
-# par défaut, ROOTDIR est fonction de la date
 DATE=$(date +%Y%m%d-%H%M%S)
-ROOTDIR=${ROOTDIR:-/tmp/package-$DATE}
-#if [ -e $ROOTDIR ] ; then 
-#    echo "Error : directory $ROOTDIR already exists."
-#    exit 1 
-#fi 
 
 LOGFILE=${LOGFILE:-/tmp/package-$DATE.log}
 if [ -e $LOGFILE ] ; then   
     echo "Error : log file $LOGFILE exists."
     exit 0
 fi
-
-mkdir -p $ROOTDIR
 
 # fabrication des fichiers temporaires
 mkdir -p -m 700 $TMPDIR
@@ -131,7 +118,20 @@ sort -u $LFILES > $LFILES.new ; rm $LFILES ; mv $LFILES.new $LFILES
 
 main
 
-echo "Le résultat est dans $ROOTDIR, et les opérations sont dans $LOGFILE"
+
+if [ -e $TMPDIR/OUTPUT ] ; then
+    if [ "$UPDATE" == 1 -a "$INPUT" ] ; then
+        set -- $INPUT
+        rm -f $1 ; mv $TMPDIR/OUTPUT $1
+	echo "Le résultat est dans $1, et les opérations sont dans $LOGFILE"
+    elif [ "$OUTPUT" ] ; then
+        mv $TMPDIR/OUTPUT $OUTPUT
+	echo "Le résultat est dans $OUTPUT, et les opérations sont dans $LOGFILE"
+    else
+        cat $TMPDIR/OUTPUT
+    fi
+else
+    echo "Aucun résultat produit. Consulter les opérations dans $LOGFILE"
+fi
 
 rm -rf $TMPDIR
-
