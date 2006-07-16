@@ -2,6 +2,7 @@
 #include <string.h>
 #include <stdarg.h>
 
+#include "flx.h"
 #include "arg.h"
 
 

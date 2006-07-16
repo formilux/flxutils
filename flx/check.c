@@ -473,7 +473,7 @@ int flxcheck_main(int argc, char **argv) {
 	/* on compare les données deux à deux afin de compléter 'dst' */
 	ft_find_diff(&src1, &src2, &dst);
 	ft_find_diff(&src1, &tmp2, &dst);
-	ft_find_diff(&src2, &tmp1, &dst);
+	ft_find_diff(&tmp1, &src2, &dst);
 	
 	/* toutes les données identiques ont été détectée pour la partie 
 	 * déterminée, on déplace le contenu de la source vers les tampons */

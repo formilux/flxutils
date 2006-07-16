@@ -26,13 +26,12 @@
 
 
 NAME=flx
-VERSION=0.6.6d
-COPYRIGHT="Copyright 2002, Benoit DOLEZ <bdolez@ant-computing.com>"
+VERSION=0.6.6e
 SRC=main.c arg.c utils.c md5.c flx.c fct1.c check.c sign.c \
     input.c input_fs.c input_file.c \
     output.c output_file.c
 OBJ=$(SRC:.c=.o)
-CFLAGS= -Wall -O2 -DMEM_OPTIM -DPROGRAM_NAME=\"$(NAME)\" -DPROGRAM_VERSION=\"$(VERSION)\" -DCOPYRIGHT=\"$(COPYRIGHT)\"
+CFLAGS= -Wall -O2 -DMEM_OPTIM -DPROGRAM_NAME=\"$(NAME)\" -DPROGRAM_VERSION=\"$(VERSION)\"
 LDFLAGS=-L.
 
 $(NAME): $(OBJ)

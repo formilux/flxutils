@@ -1,9 +1,12 @@
 OBJS=ifenslave
-include ../../include/rules.make
+# include ../../include/rules.make
 CC=gcc
 CFLAGS+=-Wstrict-prototypes -I/usr/src/linux/include -momit-leaf-frame-pointer
 
 all:	$(OBJS)
+
+clean:
+	rm -vf $(OBJS) core *.[oa] *~
 
 ifenslave: ifenslave.o
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $<

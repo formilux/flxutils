@@ -8,6 +8,8 @@
 #include "utils.h"
 #include "md5.h"
 
+#define COPYRIGHT "Copyright 2002, Benoit DOLEZ <bdolez@ant-computing.com>"
+
 #define DUMPBASENAME     "formilux-sig.dat"
 
 #define MD5_Init(ctx)                 ToolsMD5Init(ctx)
