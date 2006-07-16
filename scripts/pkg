@@ -1,11 +1,15 @@
 #!/bin/bash
 #
-# /usr/sbin/pkg - Formilux source package manager - version 0.1.13 - 2003-02-02
+# /usr/sbin/pkg - Formilux source package manager - version 0.2.0 - 2003-02-09
 #
 # Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
 #
 # This program is licenced under GPLv2 ( http://www.gnu.org/licenses/gpl.txt )
+
+########## WARNING ##########
+# this version is not compatible anymore with versions earlier than 0.2.0
+#############################
 
 # patch -p1 by default
 PATCH_LEVEL=1
@@ -75,7 +79,7 @@ function do_patch {
 	find . -name '*.rej' -o -name '*~' | xargs rm -f
 
 	for i in $PATCH_LIST; do
-		patch -Np$PATCH_LEVEL < $PKGROOT/$i
+		patch -Np$PATCH_LEVEL < $CFGROOT/$CFGDIR/patches/$i
 	done
 
 	if [ -z "`find . -name '*.rej'`" ]; then
@@ -93,7 +97,7 @@ function do_unpatch {
 	done
 
 	for i in $UNPATCH_LIST; do
-		patch -RNp$PATCH_LEVEL < $PKGROOT/$i
+		patch -RNp$PATCH_LEVEL < $CFGROOT/$CFGDIR/patches/$i
 	done
 
 	if [ -z "`find . -name '*.rej'`" ]; then
@@ -205,7 +209,7 @@ function do_pack {
   echo "done."
 
   if [ -n "$CFGFILE" ]; then
-     F=$PKGROOT/$packver.$CFGSUFF
+     F=$CFGROOT/$CFGDIR/$pack.$CFGSUFF
      echo -n "Creating $F ... "
      if [ "$F" != "$CFGFILE" ]; then cp -f "$CFGFILE" "$F"; echo "done." ; else echo "up to date."; fi
   fi
@@ -289,7 +293,7 @@ function do_pack_files {
   echo "done."
 
   if [ -n "$CFGFILE" ]; then
-     F=$PKGROOT/$packver.$CFGSUFF
+     F=$CFGROOT/$CFGDIR/$pack.$CFGSUFF
      echo -n "Creating $F ... "
      if [ "$F" != "$CFGFILE" ]; then cp -f "$CFGFILE" "$F"; echo "done." ; else echo "up to date."; fi
   fi
@@ -317,16 +321,16 @@ function usage {
   echo "   edit    : edit last .pkg file."
   echo "   patch   : apply a list of patches to the directory prior to compile."
   echo "   unpatch : revert a list of patches to the directory."
-  echo "   compile : do_compile=do_config_only+do_compile_only in .pkg script ($CFGROOT)"
-  echo "   prepack : execute do_prepack in .pkg script ($CFGROOT)"
+  echo "   compile : do_compile=do_config_only+do_compile_only in .pkg script ($CFGROOT/$CFGDIR)"
+  echo "   prepack : execute do_prepack in .pkg script ($CFGROOT/$CFGDIR)"
   echo "   strip   : strip binaries in temporary directory"
-  echo "   pack    : strip binaries, then package in $PKGROOT"
+  echo "   pack    : strip binaries, then package into $PKGROOT"
   echo "   delpack : remove temporary directory"
   echo "   clean   : execute 'make clean' and remove temporary directory."
   echo "   build   : execute clean compile prepack pack."
   echo "   unpack  : extract package into temporary directory"
   echo "Variables are :"
-  echo "CFGROOT : directory for .pkg, .diff, <$CFGROOT>"
+  echo "CFGROOT : directory for .pkg and patches, <$CFGROOT>"
   echo "CFGFILE : force to use of a .pkg, <$CFGFILE>"
   echo "PKGROOT : directory for .lst, .tgz and .dep, <$PKGROOT>"
   echo "ROOTDIR : base directory for package (not source), <$ROOTDIR>"
@@ -364,17 +368,24 @@ function pre_info {
 }
 
 function do_newpkg {
+  echo "WARNING!!! the 'newpkg' feature is in beta stage !!!"
   if [ -n "$CFGFILE" ]; then
-     F=$PKGROOT/$packver.$CFGSUFF
+     F=$CFGROOT/$PKGRADIX-$PKGVER-$DISTVER-pkg/$pack.$CFGSUFF
      echo -n "Creating $F ... "
-     if [ "$F" != "$CFGFILE" ]; then cp -f "$CFGFILE" "$F"; echo "done." ; else echo "up to date."; fi
+     if [ "$F" != "$CFGFILE" ]; then
+        mkdir -p $CFGROOT/$PKGRADIX-$PKGVER-$DISTVER-pkg && cp -f "$CFGFILE" "$F" &&
+          cp -af $CFGROOT/$CFGDIR/patches $CFGROOT/$PKGRADIX-$PKGVER-$DISTVER-pkg/ >/dev/null 2>&1
+        echo "done."
+     else
+        echo "up to date."
+     fi
   fi
 }
 
 # setting fixed vars
 if [ -z "$KERNDIR" ] ; then KERNDIR="/usr/src/linux" ; fi
-if [ -z "$CFGROOT" ] ; then CFGROOT="/var/install" ; fi
-if [ -z "$PKGROOT" ] ; then PKGROOT="/var/install" ; fi
+if [ -z "$CFGROOT" ] ; then CFGROOT="/var/flx-src" ; fi
+if [ -z "$PKGROOT" ] ; then PKGROOT="/var/flx-pkg" ; fi
 #if [ -z "$DISTVER" ] ; then DISTVER="flx.1" ; fi
 if [ "$FLXARCH" = "" ]; then FLXARCH=`uname -m` ; fi
 
@@ -406,7 +417,7 @@ fi
 # execute action
 if [ "$type" = "find" ] ; then
   for i in * ; do 
-    pkgf=`grep "/$i\$" $CFGROOT/*.$CFGSUFF | cut -f1 -d: | tr '\012' ' '`
+    pkgf=`grep "/$i\$" $CFGROOT/$CFGDIR/*.$CFGSUFF | cut -f1 -d: | tr '\012' ' '`
     echo "$i: $pkgf"
   done
 elif [ "$type" != "source_only" ] ; then
@@ -431,15 +442,52 @@ elif [ "$type" != "source_only" ] ; then
     # source configuration
     if [ -z "$ROOTDIR" ] ; then ROOTDIR=`pwd`/.flxdisk ; fi
     if [ -n "$CFGFILE" ]; then
+       CFGDIR=`dirname $CFGFILE`
+       CFGROOT=`dirname $CFGDIR`
+       CFGDIR=`basename $CFGDIR`
        . $CFGFILE
     else
-       CFGFILE=`find $CFGROOT/ $PKGROOT/ -name "$pack[-_]*-${DISTVER:-*}-$FLXARCH.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`
-       CFGFILE=${CFGFILE:-`find $CFGROOT/ $PKGROOT/ -name "$pack[-_]*-${DISTVER:-*}-*.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
-       CFGFILE=${CFGFILE:-`find $CFGROOT/ $PKGROOT/ -name "$pack[-_]*.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
-       CFGFILE=${CFGFILE:-`find $CFGROOT/ $PKGROOT/ -name "$pack.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
-       if [ -n "$CFGFILE" ]; then
-          CFGFILE=$CFGFILE.$CFGSUFF
+       #CFGFILE=`find $CFGROOT/ -name "$pack[-_]*-${DISTVER:-*}-$FLXARCH.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`
+       #CFGFILE=${CFGFILE:-`find $CFGROOT/ -name "$pack[-_]*-${DISTVER:-*}-*.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
+       #CFGFILE=${CFGFILE:-`find $CFGROOT/ -name "$pack[-_]*.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
+       #CFGFILE=${CFGFILE:-`find $CFGROOT/ -name "$pack.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
+       CFGFILE=`find $CFGROOT/ -maxdepth 1 -type d -name "$pack[-_]*-${DISTVER:-*}-pkg"|sed -e "s/-pkg\$//"|sort|tail -1`
+       CFGFILE=${CFGFILE:-`find $CFGROOT/ -maxdepth 1 -type d -name "$pack[-_]*-pkg"|sed -e "s/-pkg\$//"|sort|tail -1`}
+       CFGFILE=${CFGFILE:-`find $CFGROOT/ -maxdepth 1 -type f -name "$pack[-_]*-${DISTVER:-*}-pkg.$PKGSUFF"|sed -e "s/-pkg\.$PKGSUFF\$//"|sort|tail -1`}
+       CFGFILE=${CFGFILE:-`find $CFGROOT/ -maxdepth 1 -type f -name "$pack[-_]*-pkg.$PKGSUFF"|sed -e "s/-pkg\.$PKGSUFF\$//"|sort|tail -1`}
+
+       # to be completed
+
+       if [ -z "$CFGFILE" ]; then
+          echo "CFGFILE not found. Cannot continue." >&2
+          exit 1
+       fi
+
+       if [ -d $CFGFILE ]; then
+          CFGROOT=`dirname $CFGFILE`
+          CFGDIR=`basename $CFGFILE`-pkg
+          CFGFILE=$CFGROOT/$CFGDIR/$pack.$CFGSUFF
+       else
+          CFGROOT=`dirname $CFGFILE`
+          CFGDIR=`basename $CFGFILE`-pkg
+          CFGFILE=$CFGROOT/$CFGDIR/$pack.$CFGSUFF
+          if [ ! -e $CFGROOT/$CFGDIR ]; then
+             echo "Opening package $CFGROOT/$CFGDIR.$PKGSUFF into $CFGROOT/$CFGDIR..."
+             mkdir -p $CFGROOT/$CFGDIR && tar -C $CFGROOT/$CFGDIR -Uxpf $CFGROOT/$CFGDIR.$PKGSUFF
+             if [ $? != 0 ]; then
+                echo "There was an error during this operation. You may have to manually clean $CFGROOT/$CFGDIR. Cannot continue !"
+                exit 1
+             else
+                echo "Done !"
+             fi
+          fi
+       fi
+
+       if [ -e "$CFGFILE" ]; then
           . $CFGFILE
+       else
+          echo "CFGFILE ($CFGFILE) not found. Cannot continue." >&2
+          exit 1
        fi
     fi
 
@@ -503,3 +551,4 @@ elif [ "$type" != "source_only" ] ; then
   fi
  # done
 fi
+
