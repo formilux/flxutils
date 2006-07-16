@@ -12,12 +12,12 @@ Résumé rapide des commandes les plus courantes :
   - rd : passe en mode prompt clavier, en affichant le
          message. Ne retourne jamais d'erreur. Le prompt
          compte les niveaux pour s'y retrouver avec les {} :-)
-  - mt : mount ; re : remount ; um : umount
+  - mt : mount ; um : umount
   - mv : mount --move ; bi : mount --bind
   - ex : exécute dans un sous-process (system())
   - /path/prog args : idem.
   - rx xxx yyy : execute yyy dans chroot xxx;
-  - md : mkdir ; ln : lien ; rm : unlink ; st : stat
+  - md : mkdir ; ln : lien
   - bl,ch,fi : devices block, char, fifo
   - pr xxx yyy : pivot_root : root -> xxx/yyy ; xxx->root
 

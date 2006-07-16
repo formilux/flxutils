@@ -261,8 +261,8 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_roo
 /* used by naming rules */
 #define MAX_FIELDS	8
 #define MAX_DEVNAME_LEN	64
-#define MAX_CFG_SIZE	16384
-#define	MAX_CFG_ARGS	64
+#define MAX_CFG_SIZE	4096
+#define	MAX_CFG_ARGS	16
 //#define MAX_CMDLINE_LEN 512
 #define MAX_BRACE_LEVEL	10
 
@@ -288,7 +288,6 @@ enum {
     TOK_LN = 0,	/* ln : make a symlink */
     TOK_MD,	/* md : mkdir */
     TOK_MT,	/* mt : mount */
-    TOK_RE,	/* re : remount */
     TOK_IN,	/* in : set init program */
     TOK_EX,	/* ex : execute */
     TOK_RX,	/* rx : execute under chroot */
@@ -304,8 +303,6 @@ enum {
     TOK_EC,	/* ec : echo */
     TOK_TE,	/* te : test an environment variable */
     TOK_RD,	/* rd : read a command from the console */
-    TOK_RM,	/* rm : remove files */
-    TOK_ST,	/* st : stat file existence */
     TOK_OB,	/* {  : begin a command block */
     TOK_CB,	/* }  : end a command block */
     TOK_DOT,	/* .  : end of config */
@@ -318,7 +315,7 @@ enum {
 };
 
 /* counts from TOK_LN to TOK_DOT */
-#define NB_TOKENS	24
+#define NB_TOKENS	21
 
 /* this contains all two-chars command, 1-char commands, followed by a token
  * number.
@@ -331,7 +328,6 @@ static const  __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     "ln", 'L', 2,	/* TOK_LN */
     "md", 'D', 1,	/* TOK_MD */
     "mt", 'M', 3,	/* TOK_MT */
-    "re",   0, 3,	/* TOK_RE */
     "in", 'I', 1,	/* TOK_IN */
     "ex", 'E', 1,	/* TOK_EX */
     "rx", 'R', 2,	/* TOK_RX */
@@ -347,8 +343,6 @@ static const  __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     "ec",   0, 0,	/* TOK_EC */
     "te",   0, 1,	/* TOK_TE */
     "rd",   0, 0,	/* TOK_RD */
-    "rm",   0, 1,	/* TOK_RM */
-    "st",   0, 1,	/* TOK_ST */
     "{",  '{', 0,	/* TOK_OB */
     "}",  '}', 0,	/* TOK_CB */
     ".",  '.', 0,	/* TOK_DOT : put every command before this one */
@@ -1387,43 +1381,23 @@ int main(int argc, char **argv, char **envp) {
 	    /* the second command set is available if pid==1 or if "rebuild" is set */	    
 	    switch (token) {
 	    case TOK_MD:
-		/* md path [ mode ] :  make a directory */
+		/* D path [ mode ] :  make a directory */
 		if (mkdir(cfg_args[1], (cfg_args[2] == NULL) ? 0755 : a2mode(cfg_args[2])) == -1) {
 		    error = 1;
 		    print("<D>irectory : mkdir() failed\n");
 		}
 		goto finish_cmd;
 	    case TOK_LN:
-		/* ln from to : make a symlink */
+		/* L from to : make a symlink */
 		if (symlink(cfg_args[1], cfg_args[2]) == -1) {
 		    error = 1;
 		    print("<S>ymlink : symlink() failed\n");
 		}
 		goto finish_cmd;
-	    case TOK_ST: {		
-		/* st file : return error if file does not exist */
-		struct stat stat_buf;
-		if (stat(cfg_args[1], &stat_buf) == -1) {
-		    error = 1;
-		}
-		goto finish_cmd;
-	    }
-	    case TOK_RM: {
-		/* rm file... : unlink file or links */
-		int arg = 1;
-		while (cfg_args[arg]) {
-		    if (unlink(cfg_args[arg]) == -1) {
-			error = 1;
-			print("Unlink : unlink() failed\n");
-		    }
-		    arg++;
-		}
-		goto finish_cmd;
-	    }
 	    case TOK_BL:
-		/* bl <mode> <uid> <gid> <major> <minor> <naming rule> : build a block device */
+		/* B <mode> <uid> <gid> <major> <minor> <naming rule> : build a block device */
 	    case TOK_CH:
-		/* ch <mode> <uid> <gid> <major> <minor> <naming rule> : build a character device */
+		/* C <mode> <uid> <gid> <major> <minor> <naming rule> : build a character device */
 		if (chdir(dev_name) == -1) {
 		    print("<B>lock_dev/<C>har_dev : cannot chdir(/dev)\n");
 		    error = 1;
@@ -1458,9 +1432,8 @@ int main(int argc, char **argv, char **envp) {
 	    }
 
 	    switch (token) {
-	    case TOK_MT:
-	    case TOK_RE: {
-		/* M dev[(major:minor)] mnt type [ {rw|ro} [ flags ] ]: (re)mount dev on mnt (read-only) */
+	    case TOK_MT: {
+		/* M dev[(major:minor)] mnt type [ {rw|ro} [ flags ] ]: mount dev on mnt (read-only) */
 		char *maj, *min, *end;
 		char *mntdev;
 		int mntarg;
@@ -1517,10 +1490,7 @@ int main(int argc, char **argv, char **envp) {
 		else {
 		    print("<M>ount : 'rw' flag not found, mounting read only\n");
 		}
-
-		if (token == TOK_RE)
-		    mntarg |= MS_REMOUNT;
-
+		
 		if (mount(mntdev, cfg_args[2], cfg_args[3], MS_MGC_VAL | mntarg, cfg_args[5]) == -1) {
 		    error = 1;
 		    print("<M>ount : error during mount()\n");
@@ -1612,14 +1582,14 @@ int main(int argc, char **argv, char **envp) {
 		    break;
 		/* fall through umount if we were trying a move */
 	    case TOK_UM:
-		/* um <old_dir> : umount <old_dir> after a pivot. */
+		/* O <old_dir> : umount <old_dir> after a pivot. */
 		if (umount2(cfg_args[1], MNT_DETACH) == -1) {
 		    error = 1;
 		    print("<um> : error during umount\n");
 		}
 		break;
 	    case TOK_LO: {
-		/* lo </dev/loopX> <file> : losetup /dev/loopX file */
+		/* l </dev/loopX> <file> : losetup /dev/loopX file */
 		struct loop_info loopinfo;
 		int lfd, ffd;
 

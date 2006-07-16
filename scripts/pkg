@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# pkg - Formilux package builder - version 0.3.11 - 2003-09-14
+# pkg - Formilux package builder - version 0.3.16 - 2003-10-02
 #
 # Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
@@ -253,7 +253,7 @@ function set_default_perm {
 
     echo "      Fixing special files..."
     # second pass : check special files (block, char, fifo)
-    find $start_dir -not -type d -a -not -type f | while read; do
+    find $start_dir -not -xtype d -a -not -xtype f | while read; do
 	if [ -b "$REPLY" -o -c "$REPLY" -o -p "$REPLY" ]; then
 	    set_perm root:root 600 "$REPLY"
 	fi
@@ -263,6 +263,7 @@ function set_default_perm {
     # third pass : check regular files
     find $start_dir -type f | while read; do
 	if [ -u "$REPLY" -o -g "$REPLY" ]; then
+	    # remove other r/w on setuid/setgid
 	    chmod o-rw "$REPLY"
 	else
 	    type=$(file -z "$REPLY")
@@ -287,7 +288,7 @@ function set_default_perm {
 		    set_perm root:adm ugo-w "$REPLY"
 		fi
 		;;
-	    /sbin/*|/usr/sbin/*)
+	    /sbin/*|/usr/sbin/*|/opt/sbin/*|/opt/*/sbin/*)
 		if [ $executable -gt 0 ]; then
 		    set_perm root:adm u-sw,g-wx,o-rwx "$REPLY"
 		elif [ $script -gt 0 ]; then
@@ -299,21 +300,30 @@ function set_default_perm {
 		;;
 	    /lib/*.so|/lib/*.so.*|/usr/lib/*.so|/usr/lib/*.so.*|\
 	    /opt/lib/*.so|/opt/lib/*.so.*|/opt/*/lib/*.so|/opt/*/lib/*.so.*)
-		set_perm root:adm ug-sw,o-w "$REPLY"
+		set_perm root:adm ug-sw,o-w,+x "$REPLY"
 		;;
 	    /lib/*.[ao]|/usr/lib/*.[ao]|/opt/lib/*.[ao]|/opt/*/lib/*.[ao])
 		set_perm root:adm ugo-swx "$REPLY"
 		;;
-	    /usr/man/man*/*)
-		set_perm root:man ugo-swx "$REPLY"
+	    /etc/profile.d/*.var)
+		set_perm root:adm 0644 "$REPLY"
 		;;
-	    /usr/doc/*|/usr/info/*)
-		set_perm root:man ugo-swx "$REPLY"
+	    /etc/profile.d/*)
+		set_perm root:adm 0755 "$REPLY"
 		;;
 	    /boot/*/*|/boot/*|/etc/*/*)
-		set_perm root:man ug-swx,o-rwx "$REPLY"
+		set_perm root:adm ug-swx,o-rwx "$REPLY"
 		;;
-	    /etc/*|/usr/share/examples/*|/usr/share/examples/*/*)
+	    /etc/*)
+		set_perm root:adm ugo-swx "$REPLY"
+		;;
+	    /*/man/*)
+		set_perm root:man ugo-swx "$REPLY"
+		;;
+	    /usr/doc/*|/usr/share/*/doc/*|/usr/info/*|/usr/share/*/info/*)
+		set_perm root:man ugo-swx "$REPLY"
+		;;
+	    /usr/share/examples/*|/usr/share/examples/*/*)
 		set_perm root:man ugo-swx "$REPLY"
 		;;
 	    *)
@@ -626,8 +636,9 @@ function do_newpkg {
     fi
 
     rm -f ${LINKNAME} && mkdir -p $new_name && ln -s $new_name ${LINKNAME} && \
-	tar -C $pkg_name  --exclude='compiled/*' --exclude='released.*' --exclude='./pkg.*' -cplf - . | tar -C $new_name -xf - || \
-	    (rmdir $new_name ; rm -f ${LINKNAME})
+	tar -C $pkg_name  --exclude='compiled/*' --exclude='released.*' --exclude='./pkg.*' \
+            --exclude='./CFLAGS' --exclude='./.dep' --exclude='./.lst' --exclude='./.tgz' \
+            -cplf - . | tar -C $new_name -xf - || (rmdir $new_name ; rm -f ${LINKNAME})
     echo "A new package '$(basename $new_name)' has been created as '$new_name', based on '$(basename $pkg_name)'."
     echo "The link '${LINKNAME}' now points to it."
     echo
@@ -696,7 +707,7 @@ function do_config {
 
 # configures and compiles
 function do_compile {
-    do_config && do_compile_only
+    ( do_config ) && ( do_compile_only )
 }
 
 # preparatory work for prepack()
@@ -728,7 +739,7 @@ function build_opt {
 	for dir in $* ; do
 	    mkdir $dir
             dirs=( */$dir )
-            [ -n "${dirs[*]}" ] && find ${dirs[@]} -type f -perm +111 -exec ln -s ../{} $dir \; -printf "ln -s ../%p $ROOTDIR/opt/$dir\n"
+            [ -n "${dirs[*]}" ] && find ${dirs[@]}/ -xtype f -perm +111 -exec ln -s ../{} $dir \; -printf "ln -s ../%p $ROOTDIR/opt/$dir\n"
 	done
     ) fi
     return 0

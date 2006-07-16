@@ -24,3 +24,12 @@
  - updated pkg to 0.3.11. Now works on alpha.
  - included ifenslave 1.0.11 and 1.0.12 with a symlink to let the user choose.
  - release 0.1.18
+
+2003/09/17
+ - updated pkg to 0.3.13. Fixed stupid permissions resulting from copy-paste
+
+2003/10/02
+ - updated pkg to 0.3.16: Detect more man paths ; newpkg excludes CFLAGS,
+   .tgz, .lst, and .dep ; do_config & do_compile_only done in sub-shells ;
+   automatic permissions on /etc/profile.d/*. Better handling of symlinks.
+ - release 0.1.19
