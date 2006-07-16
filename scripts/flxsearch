@@ -25,7 +25,7 @@ function choice {
          set -- ${choices[$i]}
          case $2 in
              l) type="lien vers ${10}" ;;
-!             d) type="repertoire" ;;
+             d) type="repertoire" ;;
              s) type="socket" ;;
              c|b) type="device" ;;
              *) 
