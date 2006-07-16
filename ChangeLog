@@ -37,3 +37,9 @@
 2003/10/26
  - fixes to pkg (0.3.17)
  - release 0.1.20
+
+2003/11/11
+ - fixes to pkg (0.3.18) : compute dependencies even in /bin, /sbin & /lib
+ - fix compilation of ifenslave
+ - release 0.1.21
+

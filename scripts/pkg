@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# pkg - Formilux package builder - version 0.3.17 - 2003-10-12
+# pkg - Formilux package builder - version 0.3.18 - 2003-11-11
 #
 # Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
@@ -898,7 +898,7 @@ function _do_pack_files {
 	    */info/*.info|*/info/*.info-[0-9]*)
 		echo "$REPLY \$INFO" >> $DEP_FILE
 		;;
-	    */sbin/*|*/bin/*|*/lib/*|*/libexec/*)
+	    bin/*|sbin/*|lib/*|*/sbin/*|*/bin/*|*/lib/*|*/libexec/*)
 		flr="$(file $REPLY)"
 		case "$flr" in
 		    *\ shell\ *)
@@ -1046,7 +1046,7 @@ function do_pack {
 		fi
 		echo "$REPLY \$INFO" >> $DEP_FILE
 		;;
-	    */sbin/*|*/bin/*|*/lib/*|*/libexec/*)
+	    bin/*|sbin/*|lib/*|*/sbin/*|*/bin/*|*/lib/*|*/libexec/*)
 		flr="$(file $REPLY)"
 		case "$flr" in
 		    *\ shell\ *)
