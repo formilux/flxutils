@@ -84,3 +84,7 @@
  - fixed a bug in fct1.c where two different but valid links would
    not be reported as different.
 
+2005/03/01 :
+  - pkg 0.5.0 provides some cross-compilation variables
+  - some makefiles have been modified to support cross-compilation
+  - release 0.1.28

@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# pkg - Formilux package builder - version 0.4.3 - 2004-01-23
+# pkg - Formilux package builder - version 0.5.0 - 2005-03-01
 #
-# Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
+# Copyright (C) 2001-2005 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
 #
 # This program is licenced under GPLv2 ( http://www.gnu.org/licenses/gpl.txt )
@@ -861,9 +861,9 @@ function do_strip {
 	echo "Error: directory $ROOTDIR doesn't exist. Make sure you did 'prepack'."
 	exit 1
     fi
-    #find $ROOTDIR/. -type f | xargs file | grep ":.*executable.*not stripped" | cut -f1 -d: | xargs strip -x --strip-unneeded -R .note -R .comment > /dev/null 2>&1 
+    #find $ROOTDIR/. -type f | xargs file | grep ":.*executable.*not stripped" | cut -f1 -d: | xargs ${STRIP} -x --strip-unneeded -R .note -R .comment > /dev/null 2>&1 
     # allow executable and shared (.so), but not relocatable (.o), both stripped or not stripped
-    find $ROOTDIR/. -type f | xargs file | grep ":.*ELF.*\(executable\|\shared\).*stripped" | cut -f1 -d: | xargs strip -x --strip-unneeded -R .note -R .comment > /dev/null 2>&1 
+    find $ROOTDIR/. -type f | xargs file | grep ":.*ELF.*\(executable\|\shared\).*stripped" | cut -f1 -d: | xargs ${STRIP} -x --strip-unneeded -R .note -R .comment > /dev/null 2>&1 
     return 0
 } 
 
@@ -1139,6 +1139,39 @@ function set_compiler_options {
     	*)        arch=${arch:-i586}  cpu=${cpu:-i686}   basearch=${basearch:-i386} ;;
     esac
     
+    # Handling of cross-compilers :
+    # - setting CC will force both HOSTCC and FLXCROSSCC
+    # - setting HOSTCC will keep it
+    # - setting FLXCROSS will set CC
+    # - setting FLXCROSSCC will set CC whatever FLXCROSS is.
+
+    if [ -z "$FLX_CROSS_OPT_SET" ]; then
+        CC=${CC:-gcc}
+        AS=${AS:-as}
+        LD=${LD:-ld}
+        AR=${AR:-ar}
+        STRIP=${STRIP:-strip}
+        OBJDUMP=${OBJDUMP:-objdump}
+
+        HOSTCC=${HOSTCC:-$CC}
+        HOSTAS=${HOSTAS:-$AS}
+        HOSTLD=${HOSTLD:-$LD}
+        HOSTAR=${HOSTAR:-$AR}
+        HOSTSTRIP=${HOSTSTRIP:-$STRIP}
+        HOSTOBJDUMP=${HOSTOBJDUMP:-$OBJDUMP}
+
+        if [ -n "$FLXCROSS" ]; then
+            CC=${FLXCROSS}${CC} ; CC=${FLXCROSSCC:-$CC}
+            AS=${FLXCROSS}${AS} ; AS=${FLXCROSSAS:-$AS}
+            LD=${FLXCROSS}${LD} ; LD=${FLXCROSSLD:-$LD}
+            AR=${FLXCROSS}${AR} ; AR=${FLXCROSSAR:-$AR}
+            STRIP=${FLXCROSS}${STRIP} ; STRIP=${FLXCROSSSTRIP:-$STRIP}
+            OBJDUMP=${FLXCROSS}${OBJDUMP} ; OBJDUMP=${FLXCROSSOBJDUMP:-$OBJDUMP}
+        fi
+        # specify that we don't want to do this again
+        FLX_CROSS_OPT_SET=1
+    fi
+       
     case "$FLXARCH" in
     	*86)
     	    CC=${CC:-gcc}
@@ -1226,7 +1259,7 @@ function set_compiler_options {
     esac
 
     export FLX_ARCH_CURRENT FLX_ARCH_COMMON FLX_ARCH_SMALL
-    export CC GCC_ARCH_CURRENT GCC_ARCH_COMMON GCC_ARCH_SMALL
+    export CC AS LD AR STRIP OBJDUMP GCC_ARCH_CURRENT GCC_ARCH_COMMON GCC_ARCH_SMALL
     export GCC_CPU_CURRENT GCC_CPU_COMMON GCC_CPU_SMALL
     export GCC_OPT_FASTEST GCC_OPT_FAST GCC_OPT_SMALL
 

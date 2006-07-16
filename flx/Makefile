@@ -33,7 +33,7 @@ SRC=main.c arg.c utils.c md5.c flx.c fct1.c check.c sign.c \
 OBJ=$(SRC:.c=.o)
 COPTS=-O2
 CFLAGS= -Wall $(COPTS) -DMEM_OPTIM -DPROGRAM_NAME=\"$(NAME)\" -DPROGRAM_VERSION=\"$(VERSION)\"
-LDFLAGS=-L.
+LDFLAGS=-L. -Wl,--gc-sections
 
 all:	$(NAME)
 

@@ -1,14 +1,14 @@
 OBJS=starfire-diag tulip-diag mii-diag
 include ../include/rules.make
-CC=gcc
+CC := $(CC_ORIG)
 #CFLAGS+=-momit-leaf-frame-pointer
 
 all:	$(OBJS)
 
 %-diag:	%-diag.o libmii.o
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $^
-	strip -R .comment -R .note $@
-	objdump -h $@ | grep -q '\.data[ ]*00000000' && strip -R .data $@ || true
+	$(STRIP) -x --strip-unneeded -R .comment -R .note $@
+	$(OBJDUMP) -h $@ | grep -q '\.data[ ]*00000000' && $(STRIP) -R .data $@ || true
 	sstrip $@
 
 %.o:	%.c

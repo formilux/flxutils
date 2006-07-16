@@ -4,6 +4,6 @@ include ../include/rules.make
 
 %:	%.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $<
-	strip -R .comment -R .note $@
-	objdump -h $@ | grep -q '\.data[ ]*00000000' && strip -R .data $@ || true
+	$(STRIP) -x --strip-unneeded -R .comment -R .note $@
+	$(OBJDUMP) -h $@ | grep -q '\.data[ ]*00000000' && $(STRIP) -R .data $@ || true
 	sstrip $@
