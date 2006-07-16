@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# pkg - Formilux package builder - version 0.3.2 - 2003-06-09
+# pkg - Formilux package builder - version 0.3.11 - 2003-09-14
 #
 # Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
@@ -23,13 +23,13 @@
 #   pkg setpkg [ new_pkg ]
 #     ex: pkg setpkg openssl-0.9.6g-flx0.1
 #
-#   pkg { info | cat | edit } [ pkg ] 
+#   pkg { info | cat | edit | unpack } [ pkg ] 
 #     ex: pkg info
 #         pkg info bash
 #         pkg edit modutils-2.4
 #         pkg cat gzip-1.3
 #
-#   pkg { compile,build,prepack,strip,pack,unpack,delpack,release,clean }*
+#   pkg { compile,build,prepack,strip,pack,delpack,release,clean }*
 #
 #   pkg { patch | unpatch } [ patch_name ]
 #
@@ -64,7 +64,32 @@ CFGSUFF="cfg"
 INSTNAME=".flxdisk"
 LINKNAME=".flxpkg"
 
+FIND_CMD=pkgfilefind
+
 FILE_LIST=
+
+# all the directories that should be ignored by do_pack
+EXCLUDE_LIST=( bin boot dev etc etc/opt home lib lib/modules mnt mnt/disk mnt/cdrom mnt/usb mnt/nfs mnt/floppy opt opt/bin opt/lib opt/sbin proc root root/bin sbin sbin/init.d usr usr/bin usr/lib usr/sbin usr/share usr/share/examples var var/tmp var/run var/cache var/empty var/lib var/log var/spool var/adm )
+
+###### 
+###### here are some undertermined type functions
+######
+
+# find packageable files (that can't be automaticaly created) and return only
+# their relative path to the argument.
+
+function pkgfilefind {
+    local start=${1%%/}
+    local dir
+    local -a exclude_args=( )
+
+    for dir in "${EXCLUDE_LIST[@]}"; do
+        exclude_args=( "${exclude_args[@]}" -and -not -path "${start}/${dir}" )
+    done
+
+   find ${start} -not -path ${start} \( -empty -o \! -type d -o \! -uid 0 -o \! -gid 0 -o \! -perm 0755 \) "${exclude_args[@]}" -printf "%P\n"
+}
+
 
 ######
 ###### here are some functions for manipulating package names
@@ -168,6 +193,139 @@ function sortnames {
     echo "${list[*]}" | sort -t , $flist | cut -f2 -d~
 }
 
+
+######
+###### here are some "exported" functions used to ease file manipulation
+######
+
+#  
+# usage: set_perm uid:gid mode file...
+function set_perm {
+    local own mode
+    [ $# -gt 2 ] || return 1
+    own=$1 ; shift
+    mode=$1 ; shift
+    chown $own "$@"
+    chmod $mode "$@"
+    return 0
+}
+
+#  
+# usage: set_default_perm $ROOTDIR/start_dir
+function set_default_perm {
+    local start_dir=$1
+    local strip_dir=${ROOTDIR%%/}
+    local type executable script
+
+    if [ -z "$1" ]; then
+        echo; echo "### ERROR! set_default_perm called without arguments !!!"
+        echo "### You must specify the root directory to fix."
+	return 1
+    fi
+
+    echo
+    echo "PKG : Fixing permissions in $1 ... "
+    echo "      Please wait..."
+    echo "      Fixing directories..."
+
+    # first pass : check directories
+    find $start_dir -type d | while read; do
+	case "${REPLY##$strip_dir}" in
+	    /|/.)
+		set_perm root:root 755 "$REPLY"
+		;;
+	    /sbin|/sbin/init.d|/usr/sbin)
+		set_perm root:adm 751 "$REPLY"
+		;;
+	    /root)
+		set_perm root:root 700 "$REPLY"
+		;;
+	    /etc/formilux|/var/core)
+		set_perm root:adm 750 "$REPLY"
+		;;
+	    *)
+		if [ ! -u "$REPLY" -a ! -g "$REPLY" -a ! -k "$REPLY" ]; then
+		    set_perm root:root 755 "$REPLY"
+		fi
+		;;
+	esac
+    done
+
+    echo "      Fixing special files..."
+    # second pass : check special files (block, char, fifo)
+    find $start_dir -not -type d -a -not -type f | while read; do
+	if [ -b "$REPLY" -o -c "$REPLY" -o -p "$REPLY" ]; then
+	    set_perm root:root 600 "$REPLY"
+	fi
+    done
+
+    echo "      Fixing regular files..."
+    # third pass : check regular files
+    find $start_dir -type f | while read; do
+	if [ -u "$REPLY" -o -g "$REPLY" ]; then
+	    chmod o-rw "$REPLY"
+	else
+	    type=$(file -z "$REPLY")
+	    executable=0
+	    script=0
+
+	    if [ -z "${type//*ELF [0-9][0-9]-bit */}" -o \
+		 -z "${type//*ERROR: Corrupt*/}" ]; then
+		executable=1
+            elif [ -z "${type//*script*/}" ]; then
+		script=1
+	    fi
+
+	    #echo "processing ${REPLY##$strip_dir}"
+	    case "${REPLY##$strip_dir}" in
+	    /bin/*|/usr/bin/*|/opt/bin/*|/opt/*/bin/*|/sbin/init.d/*)
+		if [ $executable -gt 0 ]; then
+		    set_perm root:adm ug-w,o-rw "$REPLY"
+		elif [ $script -gt 0 ]; then
+		    set_perm root:adm ugo-w "$REPLY"
+		else
+		    set_perm root:adm ugo-w "$REPLY"
+		fi
+		;;
+	    /sbin/*|/usr/sbin/*)
+		if [ $executable -gt 0 ]; then
+		    set_perm root:adm u-sw,g-wx,o-rwx "$REPLY"
+		elif [ $script -gt 0 ]; then
+		    set_perm root:adm u-sw,g-swx,o-rwx "$REPLY"
+		else
+                    # neither an exec nor a script, no need to execute it !
+		    set_perm root:adm ug-swx,o-wx "$REPLY"
+		fi
+		;;
+	    /lib/*.so|/lib/*.so.*|/usr/lib/*.so|/usr/lib/*.so.*|\
+	    /opt/lib/*.so|/opt/lib/*.so.*|/opt/*/lib/*.so|/opt/*/lib/*.so.*)
+		set_perm root:adm ug-sw,o-w "$REPLY"
+		;;
+	    /lib/*.[ao]|/usr/lib/*.[ao]|/opt/lib/*.[ao]|/opt/*/lib/*.[ao])
+		set_perm root:adm ugo-swx "$REPLY"
+		;;
+	    /usr/man/man*/*)
+		set_perm root:man ugo-swx "$REPLY"
+		;;
+	    /usr/doc/*|/usr/info/*)
+		set_perm root:man ugo-swx "$REPLY"
+		;;
+	    /boot/*/*|/boot/*|/etc/*/*)
+		set_perm root:man ug-swx,o-rwx "$REPLY"
+		;;
+	    /etc/*|/usr/share/examples/*|/usr/share/examples/*/*)
+		set_perm root:man ugo-swx "$REPLY"
+		;;
+	    *)
+		# chgrp adm if not setgid and group==root
+		# chmod ugo-w if user==root
+		;;
+	    esac
+	fi
+    done
+    echo "PKG : done fixing permissions."
+}
+
 ######
 ###### here are "exported" functions, which can be used and redefined by build.cfg
 ######
@@ -181,6 +339,7 @@ function do_build {
 	declare -f do_$ACTION > /dev/null && { ( do_$ACTION $* ) || return $?; }
 	declare -f post_$ACTION > /dev/null && { ( post_$ACTION $* ) || return $?; }
     done
+    return 0
 }
 
 # this function returns one exact package name from a list of potentially
@@ -467,7 +626,7 @@ function do_newpkg {
     fi
 
     rm -f ${LINKNAME} && mkdir -p $new_name && ln -s $new_name ${LINKNAME} && \
-	tar -C $pkg_name  --exclude='compiled/*' --exclude='released.*' -cplf - . | tar -C $new_name -xf - || \
+	tar -C $pkg_name  --exclude='compiled/*' --exclude='released.*' --exclude='./pkg.*' -cplf - . | tar -C $new_name -xf - || \
 	    (rmdir $new_name ; rm -f ${LINKNAME})
     echo "A new package '$(basename $new_name)' has been created as '$new_name', based on '$(basename $pkg_name)'."
     echo "The link '${LINKNAME}' now points to it."
@@ -490,6 +649,13 @@ function do_cat {
     cat $CFGFILE
 }
 
+function do_lst {
+    local FPNAME
+
+    FPNAME=$PKGDIR/compiled/$EXACTPKG-$FLXARCH
+    cat $FPNAME.lst
+}
+
 function pre_info {
     echo "Information for package '$EXACTPKG' :"
 
@@ -508,7 +674,7 @@ function pre_info {
     else
 	echo "does not exist yet."
     fi
-    [ "$PATCH_LIST" ] && echo "   Patches list : $PATCH_LIST"
+    [ -n "${PATCH_LIST}" ] && echo "   Patches list : ${PATCH_LIST}"
     return 0
 }
 
@@ -542,17 +708,27 @@ function pre_prepack {
     # WARNING! here, we don't use $ROOTDIR because we don't want to risk
     # erasing a wrong directory as root !
     [ -d $(pwd)/${INSTNAME} ] && rm -rf $(pwd)/${INSTNAME}
+    # permissions are important here because we don't want to get an
+    # inherited setgid or something alike on the root dir
+    [ ! -d "$ROOTDIR" ] && { mkdir -p $ROOTDIR; chmod 0755 $ROOTDIR; }
+    #mkdir -p "$EXAMPLEDIR"
     return 0
 }
 
-# some cleanup of an eventual opt directory after prepack()
-function post_prepack {
+# build link in /opt directory
+# INPUT: selected path to creation in /opt
+function build_opt {
     local dir
+
     if [ -d $ROOTDIR/opt ] ; then (
+        [ $# = 0 ] && set -- bin sbin lib
+	set +o noglob 
+        shopt -s nullglob
 	cd $ROOTDIR/opt
-	for dir in bin sbin lib ; do
+	for dir in $* ; do
 	    mkdir $dir
-	    find */$dir  -type f -perm +111 -exec ln -s ../{} $dir \; -printf "ln -s ../%p $ROOTDIR/opt/$dir\n"
+            dirs=( */$dir )
+            [ -n "${dirs[*]}" ] && find ${dirs[@]} -type f -perm +111 -exec ln -s ../{} $dir \; -printf "ln -s ../%p $ROOTDIR/opt/$dir\n"
 	done
     ) fi
     return 0
@@ -579,8 +755,13 @@ function do_patch {
     local i
     find . -name '*.rej' -o -name '*~' | xargs rm -f
 
-    for i in $PATCH_LIST; do
-	patch -Np$PATCH_LEVEL < $PKGDIR/patches/$i
+    for i in ${PATCH_LIST}; do
+	[ ! -e "$PKGDIR/patches/$i" -a -e "$PKGDIR/patches/$i.gz" ] && i="$i.gz"
+	if [ -z "${i##*.gz}" ]; then
+	    gzip -cd < $PKGDIR/patches/$i | patch -Np$PATCH_LEVEL
+	else
+	    patch -Np$PATCH_LEVEL < $PKGDIR/patches/$i
+	fi
     done
 
     if [ -z "$(find . -name '*.rej')" ]; then
@@ -597,12 +778,17 @@ function do_unpatch {
 
     find . -name '*.rej' -o -name '*~' | xargs rm -f
 
-    for i in $PATCH_LIST; do
-	UNPATCH_LIST="$i $UNPATCH_LIST"
+    for i in ${PATCH_LIST}; do
+	UNPATCH_LIST=( $i ${UNPATCH_LIST[@]} )
     done
 
-    for i in $UNPATCH_LIST; do
-	patch -RNp$PATCH_LEVEL < $PKGDIR/patches/$i
+    for i in ${UNPATCH_LIST[@]}; do
+	[ ! -e "$PKGDIR/patches/$i" -a -e "$PKGDIR/patches/$i.gz" ] && i="$i.gz"
+	if [ -z "${i##*.gz}" ]; then
+	    gzip -cd < $PKGDIR/patches/$i | patch -RNp$PATCH_LEVEL
+	else
+	    patch -RNp$PATCH_LEVEL < $PKGDIR/patches/$i
+	fi
     done
 
     if [ -z "$(find . -name '*.rej')" ]; then
@@ -627,7 +813,7 @@ function do_unpack {
 # Abort if ROOTDIR doesn't exist (thus needing prepack() first).
 function do_strip {
     if [ ! -d $ROOTDIR ] ; then
-	echo "Error: directory $ROOTDIR doesn't exist. Make sure you dir 'prepack'."
+	echo "Error: directory $ROOTDIR doesn't exist. Make sure you did 'prepack'."
 	exit 1
     fi
     #find $ROOTDIR/. -type f | xargs file | grep ":.*executable.*not stripped" | cut -f1 -d: | xargs strip -x --strip-unneeded -R .note -R .comment > /dev/null 2>&1 
@@ -638,12 +824,15 @@ function do_strip {
 
 # forces pack() to strip before starting, even if do_pack() is redefined by the user.
 function pre_pack {
+    # in the mean time, we avoid removing this directory since it could have
+    # been brought legally by an authorized package.
+    #[ $(find $EXAMPLEDIR | wc -l) = 1 ] && rmdir -p $EXAMPLEDIR 2>/dev/null
     ( do_strip )
     return 0
 }
 
 # this function finds perl dependencies for a given file.
-# It's only called from do_pack_files() and do_pack()
+# It's only called from _do_pack_files() and do_pack()
 function get_perl_depend {
     local filename=$1
     local dep DEP
@@ -668,25 +857,26 @@ function get_perl_depend {
  
 # same as pack, except that it uses files in the current directory as the root
 # entries, and that no strip, link nor compression is performed.
-# Only entries listed in the file pointed to by variable FILE_LIST find their
-# way to the archive.
+# Only entries listed in the files pointed to by $* find their way to the archive.
 # This function relies on get_perl_depend().
-function do_pack_files {  
-    local DEP_FILE FPNAME
+function _do_pack_files {  
+    local DEP_FILE FPNAME ext
+    local FILE_LIST=$*
 
+    echo -n "Updating timestamps ... "
     find . -not -type l | xargs touch -m
+    echo "done."
 
     # full path name of different files
     FPNAME=$PKGDIR/compiled/$EXACTPKG-$FLXARCH
     DEP_FILE=$FPNAME.dep
 
-    # FIXME: absurde ? : rm puis cat !
     rm -rf $DEP_FILE
-    if [ -e $DEP_FILE.diff ] ; then cat $DEP_FILE.diff $DEP_FILE ; fi
+    if [ -e $DEP_FILE.diff ] ; then cat $DEP_FILE.diff > $DEP_FILE ; fi
 
     echo -n "Creating $DEP_FILE ... "
     touch $DEP_FILE
-    find . -type f -o -type l | while read ; do
+    ( set +f; shopt -s nullglob ; shopt -s dotglob ; find * -type f -o -type l ) | while read ; do
 	case $REPLY in
 	    *.pm|*.pl|*.ph)
 		get_perl_depend $REPLY
@@ -710,10 +900,10 @@ function do_pack_files {
 		    *:\ symbolic\ link*)
 			echo "$REPLY $(echo $flr | cut -f5 -d' ')" >> $DEP_FILE
 			;;
-		    *\ ELF\ 32-bit\ LSB*dynamically\ linked*)
+		    *\ ELF\ [0-9][0-9]-bit\ *dynamically\ linked*)
 			echo "$REPLY $(ldd $REPLY 2>/dev/null | grep -v 'statically linked' | awk '{print $1}' | tr '\012' ' ')" >> $DEP_FILE
 			;;
-		    *\ ELF\ 32-bit\ LSB*shared\ object*)
+		    *\ ELF\ [0-9][0-9]-bit\ *shared\ object*)
 			echo "$REPLY $(ldd $REPLY 2>/dev/null | grep -v 'statically linked' | awk '{print $1}' | tr '\012' ' ')" >> $DEP_FILE
 			;;
 		esac
@@ -738,6 +928,12 @@ function do_pack_files {
 
     # we want everything, including directories.
     cut -f1 -d' ' $FILE_LIST|sed -e 's,/$,,' | tar -T - --no-recursion -cf - | gzip -9 >$FPNAME.$PKGSUFF 2>/dev/null
+
+    # create shortcuts ".*" for tgz, dep and lst files
+    for ext in dep lst tgz; do
+        rm -f $PKGDIR/.$ext
+        ln -sf compiled/$EXACTPKG-$FLXARCH.$ext $PKGDIR/.$ext
+    done
     echo "done."
     return 0
 }
@@ -745,37 +941,76 @@ function do_pack_files {
 
 # packs the prepacked files into a new file located in $DEVROOT.
 # any eventual old package is removed.
-# this function relies on do_pack_files(), get_perl_depend(), 
+# this function relies on _do_pack_files(), get_perl_depend(), 
 function do_pack {
     local DEP_FILE FPNAME
+    local FILE_LISTS ext
+
+    # normalize the list with an absolute path for each entry
+    for file in $FILE_LIST ; do
+	if [ -z "${file##/*}" ]; then
+	    FILE_LISTS="$FILE_LISTS $file"
+	else
+	    FILE_LISTS="$FILE_LISTS $(pwd)/$file"
+	fi
+    done
+    # FIXME: is this normal ???
+    if [ ! -d "$ROOTDIR" ] ; then
+	echo "Error: \$ROOTDIR doesn't point to a valid directory : $ROOTDIR"
+	exit 1
+    fi
+    cd $ROOTDIR
 
     # use the file list when available
-    if [ "$FILE_LIST" ]; then
-	do_pack_files
-	return $?
+    if [ "$FILE_LISTS" ]; then
+        _do_pack_files $FILE_LISTS
+        return $?
     fi
-
-    # FIXME: is this normal ???
-    if [ ! -d $ROOTDIR ] ; then export ROOTDIR=$(pwd) ; fi
-    cd $ROOTDIR
 
 ##  ( find lib -type l -name "lib*.so*" | xargs rm -f ; \
 ##  find usr/lib -type l -name "lib*.so*" | xargs rm -f ; \
 ##  ldconfig -nr . ) > /dev/null 2>&1
+
+    echo -n "Updating libraries ... "
     ldconfig -nr . lib usr/lib > /dev/null 2>&1
+    echo "done."
+
+    echo -n "Updating timestamps ... "
     find . ! -type l | xargs touch -m
+    echo "done."
 
     # full path name of different files
     FPNAME=$PKGDIR/compiled/$EXACTPKG-$FLXARCH
     DEP_FILE=$FPNAME.dep
 
-    # FIXME: absurde ? : rm puis cat !
-    rm -rf $DEP_FILE
-    if [ -e $DEP_FILE.diff ] ; then cat $DEP_FILE.diff $DEP_FILE ; fi
-
+    # rebuild dependencies file, first is a diff file
     echo -n "Creating $DEP_FILE ... "
+    rm -rf $DEP_FILE
+    if [ -e $DEP_FILE.diff ] ; then cat $DEP_FILE.diff > $DEP_FILE ; fi
+
+    # build a one shot function 'add' to add dependences
+    oldadd="$(declare -f add)"
+    # usage: add file [...] need file [...]
+    function add { 
+       local file files
+       # remove file
+       while [ $# -gt 0 -a "x$1" != xneed ] ; do 
+           files=( "$1" "${files[@]}" ) 
+           shift
+       done
+       [ $# -le 1 ] && return
+       shift
+       for file in "${files}" ; do echo "$file $*" >> $DEP_FILE ; done
+    }
+    # load dependences function
+    declare -f load_deps > /dev/null && ( load_deps )
+    # reset 'add' function
+    unset add
+    # reload old one
+    [ -n "$oldadd" ] && eval "$oldadd"
+
     touch $DEP_FILE
-    find . -type f -o -type l | while read ; do
+    find . \( -type f -o -type l \) -printf "%P\n" | while read ; do
 	case $REPLY in
 	    *.pm|*.pl|*.ph)
 		get_perl_depend $REPLY
@@ -813,10 +1048,10 @@ function do_pack {
 		    *:\ symbolic\ link*)
 			echo "$REPLY $(echo $flr | cut -f5 -d' ')" >> $DEP_FILE
 			;;
-		    *\ ELF\ 32-bit\ LSB*dynamically\ linked*)
+		    *\ ELF\ [0-9][0-9]-bit\ *dynamically\ linked*)
 			echo "$REPLY $(ldd $REPLY 2>/dev/null | grep -v 'statically linked' | awk '{print $1}' | tr '\012' ' ')" >> $DEP_FILE
 			;;
-		    *\ ELF\ 32-bit\ LSB*shared\ object*)
+		    *\ ELF\ [0-9][0-9]-bit\ *shared\ object*)
 			echo "$REPLY $(ldd $REPLY 2>/dev/null | grep -v 'statically linked' | awk '{print $1}' | tr '\012' ' ')" >> $DEP_FILE
 			;;
 		esac
@@ -826,13 +1061,20 @@ function do_pack {
     echo "done."
 
     echo -n "Creating $FPNAME.lst ... "
-    (find . ! -type d -o -empty | cut -c3-| xargs flx sign --ignore-dot --no-depth > $FPNAME.lst) > /dev/null 2>&1
+    ($FIND_CMD . | xargs flx sign --ignore-dot --no-depth > $FPNAME.lst) > /dev/null 2>&1
     echo "done."
 
     echo -n "Creating $FPNAME.$PKGSUFF ... "
-    # we want everything, and directories only if they're empty. All this without './'
-    # we shouldn't get an empty line since . should contain at least what we want to tar !
-    find . ! -type d -o -empty | cut -c3- | tar -T - -cf - | gzip -9 >$FPNAME.$PKGSUFF 2>/dev/null
+    # we want everything, and directories only if they're empty. 
+    # All this without './' we shouldn't get an empty line since . 
+    # should contain at least what we want to tar !
+    $FIND_CMD . | tar --no-recursion -T - -cf - | gzip -9 >$FPNAME.$PKGSUFF 2>/dev/null
+
+    # create shortcuts ".*" for tgz, dep and lst files
+    for ext in dep lst tgz; do
+        rm -f $PKGDIR/.$ext
+        ln -sf compiled/$EXACTPKG-$FLXARCH.$ext $PKGDIR/.$ext
+    done
     echo "done."
     return 0
 }
@@ -850,14 +1092,14 @@ function usage {
     echo "  pkg setpkg [ new_pkg ]"
     echo "    ex: pkg setpkg openssl-0.9.6g-${BUILDSFX}${BUILDVER}.1"
     echo
-    echo "  pkg { info | cat | edit } [ pkg ]"
+    echo "  pkg { info | cat | edit | unpack } [ pkg ]"
     echo "    ex: pkg info"
     echo "        pkg info bash"
     echo "        pkg edit modutils-2.4"
     echo "        pkg cat gzip-1.3"
     echo
-    echo "  pkg { compile | config | compile_only | build | prepack }*"
-    echo "  pkg { strip | pack | unpack | delpack | release | clean }*"
+    echo "  pkg { clean | compile | config | compile_only | build }*"
+    echo "  pkg { prepack | strip | pack | delpack | release }*"
     echo
     echo "  pkg { patch | unpatch } [ patch_name ]"
     echo
@@ -897,6 +1139,7 @@ function known_cmd {
     declare -f pre_$ACTION > /dev/null && { ( pre_$ACTION $* ) || return $?; }
     declare -f do_$ACTION > /dev/null && { ( do_$ACTION $* ) || return $?; }
     declare -f post_$ACTION > /dev/null && { ( post_$ACTION $* ) || return $?; }
+    return 0
 }
 
 
@@ -950,7 +1193,7 @@ done
 # Some actions can be chained, others not. we'll get the longest
 # possible chain, and stop once we encounter a non-chainable action
 
-while [ $CHAINCMD -gt 0 ]; do
+while [ $CHAINCMD -gt 0 -a ${#ARGLIST[@]} -gt 0 ]; do
     set -o noglob
     ACTION=${ARGLIST[0]}
 
@@ -968,7 +1211,7 @@ while [ $CHAINCMD -gt 0 ]; do
 	    KNOWNCMD=1
 	    get_name $1 %P default
 	    ;;
-	info|edit|cat)
+	info|edit|cat|unpack)
 	    CHAINCMD=0
 	    KNOWNCMD=1
 	    get_name ${ARGLIST[0]} %L %P %D
@@ -979,7 +1222,7 @@ while [ $CHAINCMD -gt 0 ]; do
 	    REPLY=$(basename $(readlink ${LINKNAME}) 2>/dev/null)
 	    # get_name %L
 	    ;;
-	compile_only|config|config_only|compile|build|prepack|strip|pack|unpack|delpack|release|clean)
+	compile_only|config|config_only|compile|build|prepack|strip|pack|delpack|release|clean)
 	    KNOWNCMD=1
 	    REPLY=$(basename $(readlink ${LINKNAME}) 2>/dev/null)
 	    # get_name %L
@@ -991,6 +1234,8 @@ while [ $CHAINCMD -gt 0 ]; do
 	    # get_name %L
 	    ;;
     esac
+
+    [ $CHAINCMD -gt 0 ] && (echo;echo "===> PKG: starting [$ACTION] <===") >&2
 
     set +o noglob
     if [ "$ACTION" != "newpkg" ]; then
@@ -1010,6 +1255,7 @@ while [ $CHAINCMD -gt 0 ]; do
 	PKGVER=$(get_pkg_ver $EXACTPKG)
 	DISTVER=$(get_build_num $EXACTPKG)
 	ROOTDIR=${ROOTDIR:-$(pwd)/${INSTNAME}}
+        EXAMPLEDIR=${ROOTDIR}/usr/share/examples
 
 	# for compatibility with old functions. Not used anywhere outside this script.
 	packver=$EXACTPKG
@@ -1022,6 +1268,7 @@ while [ $CHAINCMD -gt 0 ]; do
 	i686) arch=i686 cpu=i686 basearch=i386 ;;
 	i486) arch=i486 cpu=i486 basearch=i386 ;;
 	i386) arch=i386 cpu=i386 basearch=i386 ;;
+	ev6)  arch=ev6  cpu=ev6  basearch=ev6 ;;
 	*)    arch=i586 cpu=i686 basearch=i386 ;;
     esac
 
@@ -1041,11 +1288,13 @@ while [ $CHAINCMD -gt 0 ]; do
 	    ( do_$ACTION ${ARGLIST[*]} ) || exit 1
 	fi
     fi
+    [ $CHAINCMD -gt 0 ] && (echo "===> PKG:  end of  [$ACTION] <===";echo) >&2
 
     # now, we'll loop only if we were in a chainable action
 done
 
-
+[ $CHAINCMD -gt 0 ] && (echo "===> PKG: [END] <===";echo) >&2
+exit 0
 
 
 
@@ -1146,13 +1395,14 @@ function usage {
     echo "   build   : execute clean compile prepack pack."
     echo "   unpack  : extract package into temporary directory"
     echo "Variables are :"
-    echo "CFGROOT : directory for .pkg and patches, <$CFGROOT>"
-    echo "CFGFILE : force to use of a .pkg, <$CFGFILE>"
-    echo "PKGROOT : directory for .lst, .tgz and .dep, <$PKGROOT>"
-    echo "ROOTDIR : base directory for package (not source), <$ROOTDIR>"
-    echo "FLXARCH : architecture for package name, <$FLXARCH>"
-    echo "KERNDIR : base directory for package (not source), <$KERNDIR>"
-    echo "DISTVER : build version (flx.1)"
+    echo "CFGROOT    : directory for .pkg and patches, <$CFGROOT>"
+    echo "CFGFILE    : force to use of a .pkg, <$CFGFILE>"
+    echo "PKGROOT    : directory for .lst, .tgz and .dep, <$PKGROOT>"
+    echo "ROOTDIR    : base directory for package (not source), <$ROOTDIR>"
+    echo "EXAMPLEDIR : base directory for sample config , <$EXAMPLEDIR>"
+    echo "FLXARCH    : architecture for package name, <$FLXARCH>"
+    echo "KERNDIR    : base directory for package (not source), <$KERNDIR>"
+    echo "DISTVER    : build version (flx.1)"
     exit 1
 }
 
@@ -1440,9 +1690,9 @@ else
 	fi
 
     
-	if [ -z "$PATCH_LIST" ]; then
+	if [ -z "${PATCH_LIST}" ]; then
 	    PATCH_LIST=${CFGFILE%%.$CFGSUFF}.diff
-	    if [ ! -e "$PATCH_LIST" ]; then
+	    if [ ! -e ${PATCH_LIST} ]; then
 		unset PATCH_LIST
 	    fi
 	fi

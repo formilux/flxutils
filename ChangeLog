@@ -7,3 +7,20 @@
  - reverted to ifenslave 1.0.11 because 1.0.12 breaks compatibility with
    older versions while it claims to fix it !
  - release 0.1.17
+
+2003/08/02
+ - fixed a bug in mkinstall2 which would prevent it from installing on
+   partition devices which contains '/' in their names (eg: /dev/ida/...)
+
+2003/08/17
+ - updated pkg to 0.3.5 :
+   - unpack accepts a package name
+   - chaining of actions has been fixed
+   - set_default_perm
+   - increased verbosity
+
+2003/09/14
+ - changed mkinstall2 to mkinstall and renamed old mkinstall to mkinstall.old
+ - updated pkg to 0.3.11. Now works on alpha.
+ - included ifenslave 1.0.11 and 1.0.12 with a symlink to let the user choose.
+ - release 0.1.18

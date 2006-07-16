@@ -1,4 +1,4 @@
-OBJS=ifenslave
+OBJS=ifenslave-1.0.11 ifenslave-1.0.12 ifenslave
 # include ../../include/rules.make
 CC=gcc
 CFLAGS+=-Wstrict-prototypes -I/usr/src/linux/include -momit-leaf-frame-pointer
@@ -8,7 +8,11 @@ all:	$(OBJS)
 clean:
 	rm -vf $(OBJS) core *.[oa] *~
 
-ifenslave: ifenslave.o
+ifenslave:
+	rm -f ifenslave
+	ln -s ifenslave-1.0.12 ifenslave
+
+%: %.o
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $<
 	strip -R .comment -R .note $@
 	objdump -h $@ | grep -q '\.data[ ]*00000000' && strip -R .data $@ || true
