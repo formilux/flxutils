@@ -106,6 +106,44 @@ lo      l </dev/loopX> <file>
 
   For executable reduction reasons, the .preinit file is limited to 4 kB.
 
+  The choice of the init program is quite complex, because we want to avoid
+  stupid loops and buggy behaviours while conservating quite a parametrable
+  init. Basically, we'll use environment variables that we will destroy once
+  read, to avoid getting them again if we loop on ourselves (imagine an
+  'exec /sbin/init" from a shell cmd line, which will blindly re-exec a shell).
+  So there are two distinct cases (init and linuxrc) :
+
+  1) linuxrc
+     We want to be able to either return or transfer execution to the real init.
+
+     - if we find "init2=xxxx" in the env, we memorize it and move it away from the env.
+     - if "in xxxx" has been specified on a keyboard input from an "rd"
+       statement, we unconditionnaly do an execve("xxx", "xxx", ##no args##, ##envp##).
+     - if the env contained "init2=xxxx", we do an execve("xxxx", "xxxx", ##no args##, ##envp##).
+       we don't pass the args because it is a rescue init, such as a shell, and
+       we don't want it to fail on "bash: auto: command not found" or similar.
+     - if the conf contained "in xxxx", we do an execve("xxxx", "xxxx", argv[], ##envp##)
+       because we want it to know about the original args. Eg: init=/linuxrc single
+     - if the conf didn't contain "in xxxx", we unmount all what we can and
+       return. The kernel will be able to switch over to the next init stage.
+
+  2) init, or anything else (telinit, ...)
+     We want to transfer execution to the real init.
+
+     - if we find "INIT=xxxx" in the env, we memorize it and move it away from the env.
+     - if "in xxxx" has been specified on a keyboard input from an "rd"
+       statement, we unconditionnaly do an execve("xxx", "xxx", ##no args##, ##envp##).
+     - if the env contained "INIT=xxxx", we do an execve("xxxx", "xxxx", ##no args##, ##envp##).
+       we don't pass the args because it is a rescue init, such as a shell, and
+       we don't want it to fail on "bash: auto: command not found" or similar.
+     - if the conf contained "in xxxx", we do an execve("xxxx", "xxxx", argv[], ##envp##)
+       because we want it to know about the original args. Eg: init=/.preinit single
+     - if the conf didn't contain "in xxxx", we transfer execution to "/sbin/init-sysv".
+
+  Note: basically, each time an environment variable is read, it must be killed afterwards.
+        Eg: init2=, INIT=, ...
+
+
   The root directory should contain the following dirs :
     - /var (directory) -> can be a ramfs or a real dir on another device
     - /var/tmp (directory) -> idem
@@ -201,12 +239,12 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str_reb
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_tmp[]   = "/var/tmp";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_run[]   = "/var/run";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_self_fd[]   = "/proc/self/fd";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_cmdline[] = "/proc/cmdline";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init[] = "sbin/init";
+//static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_cmdline[] = "/proc/cmdline";
+//static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init[] = "sbin/init";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init_sysv[] = "sbin/init-sysv";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_linuxrc[] = "/.linuxrc";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str__linuxrc[] = "/linuxrc";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_options[] = "size=0,nr_inodes=4096,mode=755";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str__linuxrc[] = "/linuxrc";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_dir[]  = "/proc";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) tmpfs_fs[]  = "tmpfs";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_root[]  = "dev/root";
@@ -225,7 +263,7 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_roo
 #define MAX_DEVNAME_LEN	64
 #define MAX_CFG_SIZE	4096
 #define	MAX_CFG_ARGS	16
-#define MAX_CMDLINE_LEN 512
+//#define MAX_CMDLINE_LEN 512
 #define MAX_BRACE_LEVEL	10
 
 struct dev_varstr {
@@ -340,7 +378,7 @@ static const __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
 static char cfg_data[MAX_CFG_SIZE];
 static char *cfg_args[MAX_CFG_ARGS];
 static char *cfg_line;
-static char cmdline[MAX_CMDLINE_LEN];
+//static char cmdline[MAX_CMDLINE_LEN];
 static char *cst_str[MAX_FIELDS];
 static char *var_str[MAX_FIELDS];
 static struct dev_varstr var[MAX_FIELDS];
@@ -411,6 +449,7 @@ static void reopen_console() {
 	print("init/info : reopened /dev/console\n");
 }
 
+#if 0
 /* reads the kernel command line </proc/cmdline> into memory and searches
  * for the first assignment of the required variable. Return its value
  * (which may be empty) or NULL if not found.
@@ -468,6 +507,42 @@ char *find_arg(char *arg) {
 	return c; /* pointer to empty string */
     else
 	return NULL; /* not found */
+}
+#endif
+
+/*
+ * looks for the last assignment of variable 'var=' in 'envp'.
+ * the value found is returned (or NULL if not found).
+ * if 'remove' is not zero, the assignment is removed afterwards.
+ * eg: init=my_getenv(envp, "init=", 1);
+ */
+char *my_getenv(char **envp, char *var, const int remove) {
+    int namelen;
+    char **last;
+
+    last = NULL;
+    namelen = strlen(var);
+    while (*envp != NULL) {
+	//printf("comparing <%s> against <%s> for %d chars\n", *envp, var, namelen);
+	if (!strncmp(*envp, var, namelen))
+	    last = envp;
+	envp++;
+    }
+    //printf("found <%s>\n", (last?*last:"null"));
+
+    if (last == NULL) {
+	return NULL;
+    } else {
+	char *ret = (*last) + namelen;
+	if (remove)
+	    while (*last != NULL) {
+		//printf("moving <%s> over <%s>\n", *(last+1),*last);
+		*last = *(last+1);
+		last++;
+	    }
+	//printf("returning <%s>\n", ret);
+	return ret;
+    }
 }
 
 /* reads the configuration file <cfg_file> into memory.
@@ -544,10 +619,22 @@ static int parse_cfg(char **cfg_data) {
 
 	/* fills the cfg_args[] array with the command itself, followed by all
 	 * args. cfg_args[last+1]=NULL.
+	 *
+	 * We have a particular case here :
+	 * if the line begins with '/', then we return TOK_EX so that it executes
+	 * the command just as it would have done with 'ex' prefixed to the line.
+	 * For this, we insert a fake cfg_args[0], also pointing to the '/', which
+	 * will be matched later.
 	 */
-	for (nbargs = 0; *p && (nbargs < MAX_CFG_ARGS - 1); nbargs++) {
+	nbargs = 0;
+	if (*p == '/')
+	    cfg_args[nbargs++] = p;
+
+	for (; *p && (nbargs < MAX_CFG_ARGS - 1); nbargs++) {
 	    int backslash = 0, quote = 0;
+
 	    cfg_args[nbargs] = p;
+
 	    do {
 		if (backslash) {
 		    backslash = 0;
@@ -575,8 +662,15 @@ static int parse_cfg(char **cfg_data) {
 	}
 
 	/* search a matching token for the command : it can either be a single
-	 * char (old language) or a double char (new language)
+	 * char (old language) or a double char (new language).
+	 *
+	 * We have a particular case :
+	 * if the line begins with '/', then we return TOK_EX so that it executes
+	 * the command just as it would have done with 'ex' prefixed to the line.
 	 */
+	if (**cfg_args == '/')
+	    return TOK_EX | cond;
+
 	for (token = 0; token < NB_TOKENS; token++)
 	    if ((!cfg_args[0][1] && tokens[token].scmd == cfg_args[0][0]) ||
 		(cfg_args[0][1] &&
@@ -936,13 +1030,15 @@ int main(int argc, char **argv, char **envp) {
     int cmd_input = INPUT_FILE;
     static char cmd_line[256]; /* one line of config from the prompt */
     struct stat statf;
-    char *cmdline_arg;
+    //    char *cmdline_arg;
     char *cfg_file;
     int brace_level, kbd_level, run_level;
     struct {
 	int error;
 	int cond;
     } context[MAX_BRACE_LEVEL];
+
+    char *conf_init, *force_init;
 
     /* first, we'll check if we have been called as 'linuxrc', used only in
        initrd. In this particular case, we ignore all arguments and use
@@ -986,7 +1082,10 @@ int main(int argc, char **argv, char **envp) {
 	 * from userspace, the config file is not read again so only the hardcoded
 	 * name will be used for the executable name.
 	 */
-	*argv = (char *)&sbin_init_sysv; /*"sbin/init-sysv"*/;
+	//*argv = (char *)&sbin_init_sysv; /*"sbin/init-sysv"*/;
+	conf_init = (char *)&sbin_init_sysv; /*"sbin/init-sysv"*/;
+	force_init = my_getenv(envp, CONST_STR("INIT="), 1);
+	//printf("force_init=<%s>, INIT_new=%p\n", my_getenv(envp, "INIT=", 0));
 	/* if "rebuild" is passed as the only argument, then we'll try to rebuild a
 	 * full /dev even if not pid==1, but only if it was not already populated
 	 */
@@ -994,7 +1093,10 @@ int main(int argc, char **argv, char **envp) {
 	pid1 = (getpid() == 1);
     }
     else {
-	*argv = (char *)&sbin_init; /* "sbin/init" */
+	conf_init = NULL;
+	force_init = my_getenv(envp, CONST_STR("init2="), 1);
+	//*argv = (char *)&sbin_init; /* "sbin/init" */
+	//printf("force_init=<%s>, init2_new=%s\n", my_getenv(envp, "init2=", 0));
     }
 
     if (pid1 || linuxrc) {
@@ -1213,17 +1315,17 @@ int main(int argc, char **argv, char **envp) {
 		 * So we flush them all.
 		 */
 		print("<I>nit : used config name for init\n");
-		argv[0] = cfg_args[1];
-		argv[1] = NULL;
 
 		/* in keyboard mode, specifying init stops any further parsing,
 		 * so that the rest of the config file can be skipped.
 		 */
-		if (cmd_input == INPUT_KBD)
+		if (cmd_input == INPUT_KBD) {
+		    force_init = cfg_args[1];
 		    break;
-		else {
+		} else {
 		    /* non sense to switch error status when assigning init */
 		    error = context[brace_level].error;
+		    conf_init = cfg_args[1];
 		    continue;
 		}
 		//} else if (token == TOK_EC) {
@@ -1345,10 +1447,12 @@ int main(int argc, char **argv, char **envp) {
 		 * in /proc/cmdline
 		 */
 		mntdev = cfg_args[1];
-		if ((*mntdev != '/') && ((cmdline_arg = find_arg(mntdev)) != NULL)) {
-		    mntdev = cmdline_arg;
-		    print("<M>ount : using command line device\n");
-		}
+		// the following code handles "var=/dev/sda2" or "home=/dev/hda1(3:1)" on
+		// the kernel command line.
+		//if ((*mntdev != '/') && ((cmdline_arg = find_arg(mntdev)) != NULL)) {
+		//    mntdev = cmdline_arg;
+		//    print("<M>ount : using command line device\n");
+		//}
 		
 		maj = mntdev;   /* handles /dev/xxx(maj:min) */
 		while (*maj && *maj != '(')
@@ -1577,6 +1681,31 @@ int main(int argc, char **argv, char **envp) {
      * we don't close 0/1/2 nor dismount /dev, else we wouldn't be able to do
      * anything.
      */
+
+    if (force_init != NULL) {
+	/* we keep the cmdline args if we take it from the kernel cmdline,
+	 * but we flush any args if it comes from the keyboard
+	 */
+	argv[0] = force_init;
+	if (cmd_input == INPUT_KBD)
+	    argv[1] = NULL;
+    } else {
+	/* standard conf or new linuxrc : !NULL = chained init */
+	/* old linuxrc : NULL = no chained init */
+	argv[0] = conf_init;
+    }
+
+    if (linuxrc && force_init == NULL) {
+	/* normal linuxrc : we close and unmount all what we have done, but not
+	 * in case of forced init, because if we force, it should mean that we
+	 * want a prompt or something special.
+	 */
+	close(2); close(1); close(0);
+	umount2(dev_name, MNT_DETACH);
+    }
+
+#if 0
+
     if (cmd_input != INPUT_KBD) {
 	if (linuxrc) {
 	    close(2); close(1); close(0);
@@ -1586,10 +1715,12 @@ int main(int argc, char **argv, char **envp) {
 	    sleep(10);
 #endif
 	    /* handle the lilo command line "init2=prog" */
-	    cmdline_arg = find_arg(CONST_STR("init2"));
+	    //cmdline_arg = find_arg(CONST_STR("init2"));
+	    //cmdline_arg = my_getenv(envp, CONST_STR("init2="), 1);
 	} else {
 	    /* handle the lilo command line "INIT=prog" */
-	    cmdline_arg = find_arg(CONST_STR("INIT"));
+	    //cmdline_arg = find_arg(CONST_STR("INIT"));
+	    cmdline_arg = my_getenv(envp, CONST_STR("INIT="), 1);
 	}
 	
 	if (cmdline_arg != NULL) {
@@ -1597,17 +1728,23 @@ int main(int argc, char **argv, char **envp) {
 	    argv[1] = NULL;
 	}
     }
+
     print("init/debug: *argv = "); print (*argv); print("\n");
+#endif
+
     umask(old_umask);
 #ifdef SLOW_DEBUG
     sleep(10);
 #endif
-    err = execve(*argv, argv, envp);
-    print("init/error : last execve() failed\n");
+    /* the old linuxrc behaviour doesn't exec on exit. */
+    if (*argv != NULL) {
+	err = execve(*argv, argv, envp);
+	print("init/error : last execve() failed\n");
 
-    /* we'll get a panic there, so let some time for the user to read messages */
-    if (pid1)
-	sleep(60);
-
-    return err;
+	/* we'll get a panic there, so let some time for the user to read messages */
+	if (pid1)
+	    sleep(60);
+	return err;
+    }
+    return 0;
 }
