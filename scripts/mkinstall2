@@ -460,24 +460,20 @@ function check_directories {
 	    return 1
 	fi
     fi
-    if [ ! -d $ROOTDIR/var/. ] ; then 
-	mkdir $ROOTDIR/var ; fi
-    if [ ! -d $ROOTDIR/var/tmp ] ; then 
-	mkdir $ROOTDIR/var/tmp ; chmod 1777 $ROOTDIR/var/tmp ; fi
-    if [ ! -d $ROOTDIR/var/run ] ; then 
-	mkdir $ROOTDIR/var/run ; fi
-    if [ ! -d $ROOTDIR/var/spool ] ; then 
-	mkdir $ROOTDIR/var/spool ; fi
-    if [ ! -d $ROOTDIR/var/log ] ; then 
-	mkdir $ROOTDIR/var/log ; fi
-    if [ ! -d $ROOTDIR/var/cache ] ; then 
-	mkdir $ROOTDIR/var/cache ; fi
-    if [ ! -d $ROOTDIR/var/adm/. ] ; then 
-	ln -s log $ROOTDIR/var/adm ; fi
+    [ -d $ROOTDIR/var/. ] || mkdir $ROOTDIR/var
+    [ -d $ROOTDIR/var/run ] || mkdir $ROOTDIR/var/run
+    [ -d $ROOTDIR/var/spool ] || mkdir $ROOTDIR/var/spool
+    [ -d $ROOTDIR/var/cache ] || mkdir $ROOTDIR/var/cache
+    if [ ! -d $ROOTDIR/var/log ] ; then
+        mkdir $ROOTDIR/var/log
+        chown root:log $ROOTDIR/var/log
+        chmod 2750 $ROOTDIR/var/log
+    fi
+    [ -d $ROOTDIR/var/adm/. ] || ln -s log $ROOTDIR/var/adm
 
+    if [ ! -d $ROOTDIR/var/tmp ] ; then mkdir $ROOTDIR/var/tmp ; chmod 1777 $ROOTDIR/var/tmp ; fi
     # /tmp should exist, either as a dir or a link.
-    if [ ! -e $ROOTDIR/tmp ] ; then 
-	mkdir $ROOTDIR/tmp ; chmod 1777 $ROOTDIR/tmp ; fi
+    if [ ! -e $ROOTDIR/tmp ] ; then mkdir $ROOTDIR/tmp ; chmod 1777 $ROOTDIR/tmp ; fi
 
     return 0
 }
@@ -1160,7 +1156,7 @@ while [ -n "$action" ] ; do
 			[ -d "$ROOTDIR" ] || mkdir -p -m 0755 $ROOTDIR
 			tar zpxf $PKGDIR/$pack -C $ROOTDIR ;;
 		    *prf)
-			flxextract -R $ROOTDIR -i $PKGDIR/$pack ;;
+			flxextract -R $ROOTDIR -p $PKGDIR -i $PKGDIR/$pack ;;
 		esac
 	    done 
 	    check_directories || exit 1
