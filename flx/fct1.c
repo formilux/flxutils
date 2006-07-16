@@ -362,20 +362,25 @@ char *build_line(char *path, char *filename, t_file_desc *info) {
 	else 
 	    s += sprintf(blk+s, "%10ld ", st->st_mtime);
 	
-	s += sprintf(blk+s, "%s", backslashed_str(path, " \\\n()\t"));
+	s += sprintf(blk+s, "%s", escape_str(path));
 	
 	if (S_ISLNK(st->st_mode) && info->link)
-	    s += sprintf(blk+s, " %s", backslashed_str(info->link, " \\\n()\t"));
+	    s += sprintf(blk+s, " %s", escape_str(info->link));
     }
     else {
 	if (IS(Options, GOPT_HUMAN_READABLE))
 	    s += sprintf(blk+s, "? 0000(-) % 5d % 5d % 10d -------------------------------- %10d(-) %s",0 , 0, 0, 0, 
-			 backslashed_str(path, " \\\n()\t"));
+			 escape_str(path));
 	else 
 	    s += sprintf(blk+s, "? 0000 % 5d % 5d % 10d -------------------------------- %10d %s",0 , 0, 0, 0, 
-			  backslashed_str(path, " \\\n()\t"));
+			  escape_str(path));
     }
     return (blk);
+}
+
+/* return formatted info into a static string */
+char *show_filename(char *path, char *filename, t_file_desc *info) {
+    return (path);
 }
 
 

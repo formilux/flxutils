@@ -5,8 +5,11 @@
 #include <sys/types.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <ctype.h>
 
 #include "utils.h"
+
+static char bigbuffer[BUFFLEN];
 
 POOL_INIT(p2void);
 
@@ -118,17 +121,62 @@ char *backslashed_strmchr(char *s, char *mc) {
 
 /* return the string with characters 'toback' backslashed */
 char *backslashed_str(char *s, char *toback) {
-    static char buff[BUFFLEN];
-    char        *pbuff = buff;
+    char        *pbuff = bigbuffer;
+	int         len = 0;
     
-    while (*s) {
+    while (*s && len < (BUFFLEN-1)) {
 	if (strchr(toback, *s)) {
 	    *pbuff++ = '\\';
 	}
 	*pbuff++ = *s++;
     }
-    *pbuff = 0;
-    return (buff);
+	bigbuffer[len] = 0;
+    return (bigbuffer);
+}
+
+/* escape unprintable char with its hexadecimal value (url encode form) */
+char *escape_str(char *s) {
+	char        *pbuff = bigbuffer;
+	int         len = 0;
+
+	while (*s && len < (BUFFLEN-4)) {
+		if (flx_is_graph(*s)) {
+			*pbuff++ = *s++;
+			len++;
+		}
+		else {
+			*pbuff++ = '%';
+			*pbuff++ = DEC2HEX(*s/16);
+			*pbuff++ = DEC2HEX(*s%16);
+			s++;
+			len += 3;
+		}
+	}
+	bigbuffer[len] = 0;
+	return (bigbuffer);
+}
+
+/* unescape string from %xx string form */
+char *unescape_str(char *s) {
+	char        *pbuff = bigbuffer;
+	int         len = 0;
+
+	while (*s && len < (BUFFLEN-1)) {
+		if (*s == '\\') {
+			s++;
+			*pbuff++ = *s++;
+		}
+		else if (*s == '%' && isxdigit(*(s+1)) && isxdigit(*(s+2))) {
+			*pbuff++ = HEX2DEC(s[1])*16+HEX2DEC(s[2]);
+			s += 3;
+		}
+		else {
+			*pbuff++ = *s++;
+		}
+		len++;
+	}
+	bigbuffer[len] = 0;
+	return (bigbuffer);
 }
 
 void *push_str_sorted(void *ptr, char *str) {

@@ -58,12 +58,7 @@ typedef unsigned char   u_char;
 
 #define PFERROR(str...)    PFERROR2(str, 0)
 #define PFERROR2(str, p...)  pferror("%s:%d: " str, __FILE__, __LINE__, ##p)
-
-#define DEC2HEX(c)  ({unsigned char __c=(c);(__c<10)?(__c+'0'):(__c-10+'a'); })
-#define HEX2DEC(c)  ({unsigned char __c=(c);('0'<=__c&&__c<='9')?(__c-'0'):\
-                                            ('A'<=__c&&__c<='F')?(__c-'A'+10):\
-                                            (__c-'a'+10); })
-#define flx_is_graph(x) ({int __c = (x); __c > 0x20 && __c < 0x7f && __c != '%' && __c != '\\' && __c != '$'; })
+#define HEXTODEC(a)  (('0'<=(a) && (a)<='9')?(a)-'0':(a)-'a'+10)
 
 
 #ifdef  MEM_OPTIM
@@ -188,7 +183,5 @@ char *backslashed_strchr(char *s, char c);
 char *backslashed_strmchr(char *s, char *mc);
 char *backslashed_str(char *, char *toback);
 void *push_str_sorted(void *ptr, char *str);
-char *escape_str(char *s);
-char *unescape_str(char *s);
 
 #endif /* __UTILS_H__ */

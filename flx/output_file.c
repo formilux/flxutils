@@ -12,6 +12,7 @@
 
 #define OPT_SORTED            0x01
 #define OPT_WRITE             0x02
+#define OPT_LS                0x04
 
 /* affiche le contenu d'un répertoire à partir de l'emplacement spécifié en
  * reprenant son nom 
@@ -145,6 +146,9 @@ int   output_file_write_(t_file_status *desc, t_ft *tree,
 }
 
 int   output_file_write(t_file_status *desc, t_ft *tree, int number) {
+	if ((desc->options & OPT_LS) == OPT_LS)
+		return (output_file_write_(desc, tree, number, show_filename));
+	else
     return (output_file_write_(desc, tree, number, build_line));
 }
 
@@ -190,6 +194,8 @@ t_file_status  *output_file_open(char *pathname, char *opts) {
 	    options = (sign > 0 ? (options|OPT_SORTED) : (options&~OPT_SORTED));
 	else if (!strcmp(popts, "level") && pvalue) /* recurse level */
 	    new->recursion = atoi(pvalue);
+		else if (!strcmp(popts, "ls"))    /* just list flag */
+			options = options|OPT_LS;
 	else {
 	    error("unknown option : %s", popts);
 	    FREE(new);
@@ -197,6 +203,8 @@ t_file_status  *output_file_open(char *pathname, char *opts) {
 	}
 	popts = t;
     }
+
+	new->options = options;
 
     filename = ppath;
     if (ppath && (ppath = backslashed_strmchr(ppath, DELIM_LIST))) {

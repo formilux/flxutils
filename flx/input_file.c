@@ -4,6 +4,7 @@
 #include <sys/types.h>
 #include <stdlib.h>
 #include <dirent.h>
+#include <ctype.h>
 
 #include "input_file.h"
 #include "utils.h"
@@ -42,6 +43,10 @@ char   **get_field1(char *line) {
 		*pline++ = *(line+1); 
 		line += 2 ; 
 	    }
+			else if (*line == '%' && isxdigit(*(line+1)) && isxdigit(*(line+2))) {
+				*pline++ = HEX2DEC(line[1])*16+HEX2DEC(line[2]);
+				line += 3;
+			}
             else {
 		*pline++ = *line++ ;
 	    }
@@ -116,7 +121,7 @@ t_file_desc *fill_from_signfs_line(char **tab, char **rpath, t_file_desc **desc)
 	    if (p1[0] != '-') {
 		for (i = 0 ; p1[i] ; i++) 
 		    temp[i] = (unsigned char)
-			(HEXTODEC(p1[i * 2]) * 16 + HEXTODEC(p1[i * 2 + 1]));
+						(HEX2DEC(p1[i * 2]) * 16 + HEX2DEC(p1[i * 2 + 1]));
 		(*desc)->md5 = MALLOC(i);
 		memcpy((*desc)->md5, temp, i);
 	    }

@@ -26,7 +26,7 @@
 
 
 NAME=flx
-VERSION=0.6.9
+VERSION=0.7.0
 SRC=main.c arg.c utils.c md5.c flx.c fct1.c check.c sign.c \
     input.c input_fs.c input_file.c \
     output.c output_file.c

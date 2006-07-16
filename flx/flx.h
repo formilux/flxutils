@@ -8,7 +8,7 @@
 #include "utils.h"
 #include "md5.h"
 
-#define COPYRIGHT "Copyright 2002, Benoit DOLEZ <bdolez@ant-computing.com>"
+#define COPYRIGHT "Copyright 2002-2004, Benoit DOLEZ <bdolez@ant-computing.com>"
 
 #define DUMPBASENAME     "formilux-sig.dat"
 
@@ -219,6 +219,7 @@ extern char *checksum_md5_from_data(char *data, int len) ;
 extern char *end_field(char *line) ;
 extern int mkdir_with_parent(char *pathname, mode_t mode) ;
 extern char *build_line(char *path, char *filename, t_file_desc *info) ;
+extern char *show_filename(char *path, char *filename, t_file_desc *info) ;
 extern void dump_tree(t_ft *tree) ;
 extern int dump_diff_tree(t_dtree *tree);
 extern int files_are_the_same(t_file_desc *f1, t_file_desc *f2, int Diff, char *path) ;

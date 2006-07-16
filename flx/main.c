@@ -33,6 +33,7 @@ char  *Progname = NULL;
 
 #define FLX_SIGN            1
 #define FLX_CHECK           2
+#define FLX_LS              3
 
 
 t_param FLX_poptions[] = {
