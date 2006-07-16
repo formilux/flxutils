@@ -1,4 +1,12 @@
 #!/bin/sh
+#
+# /sbin/mkinstall - Formilux System Installer - version 1.0.0 - 2003-03-20
+# This file is part of the Formilux project : http://formilux.ant-computing.com/
+#
+# Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
+#       mailto: benoit@ant-computing.com,willy@ant-computing.com
+#
+# This program is licenced under GPLv2 ( http://www.gnu.org/licenses/gpl.txt )
 
 # This function collects some information in /proc and other places.
 # It should be called ASAP.

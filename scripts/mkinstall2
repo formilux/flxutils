@@ -1,0 +1,1223 @@
+#!/bin/bash
+#
+# /sbin/mkinstall - System Installer - version 1.9.0 - 2003-06-16
+# This file is part of the Formilux project : http://formilux.ant-computing.com/
+#
+# Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
+#       mailto: benoit@ant-computing.com,willy@ant-computing.com
+#
+# This program is licenced under GPLv2 ( http://www.gnu.org/licenses/gpl.txt )
+
+cdlist=( )
+names=( )
+sizes=( )
+parts=( )
+
+# this utility uses a few temporary files :
+#
+# /tmp/fsmnt  : <device><space><mount_point>
+#    device=/dev/hda, /dev/sda1...
+#    space=exactly one space
+#    mount_mount=/home, /var, /, ..., mbr, cdrom, swap, <empty string when not affected>
+# /tmp/fsid   : <device><space><hex_id><space><os_name>
+# /tmp/fstype : <device><space><fstype>
+# /tmp/fslist : <device>
+# /tmp/fssize : <device><space><size_in_kB>
+# /tmp/sourcepkg : symlink to the source packages directory
+
+# give it a number suffixed with a k,M,G,T, and it will return it reduced to
+# the nearest power of 1024 suffixed with k,M,G or T
+humansize() {
+   local pow val
+   local -a suff=( "" k M G T P )
+   case "${1##[0-9]*}" in
+      k) pow=1;;
+      M) pow=2;;
+      G) pow=3;;
+      T) pow=4;;
+      P) pow=5;;
+      *) pow=0;;
+   esac
+   val=${1%%[a-zA-Z]*}
+   # we don't return values lower than 10 when possible
+   while [ $val -ge 10240 ]; do
+      ((pow++))
+      ((val/=1024))
+   done  
+   REPLY=$val${suff[$pow]}
+   echo -n $REPLY
+}
+
+detect_cdrom() {
+    cdlist=($(grep -i '^drive name:' /proc/sys/dev/cdrom/info |cut -f2 -d:))
+    CDROMS="${cdlist[*]}"
+}
+
+detect_disks() {
+    local i j major minor size name rest
+
+    names=( )
+    sizes=( )
+    parts=( )
+
+    rm -f /tmp/partitions
+    tail +3 /proc/partitions | sort -k4.1 >/tmp/partitions
+    while read major minor size name rest; do
+	if ((i >= 0)); then
+	    names[i]=$name
+	    sizes[i]=$size
+	    parts[i]=1
+	fi
+	((i++))
+    done < /tmp/partitions
+    
+    i=0
+    while ((i < ${#names[@]})); do
+    if [ -n "${names[i]}" ]; then
+	j=0 
+	while ((j < ${#names[@]})); do
+	    if [ $i -ne $j -a -n "${names[j]}" -a -z "${names[j]##${names[i]}*}" ]; then
+		names[j]=""
+		((parts[i]+=${parts[j]}))
+	    fi
+	    ((j++))
+	done
+    fi
+    ((i++))
+    done
+
+    i=0 j=0
+    while ((i < ${#names[@]})); do
+	if [ -n "${names[i]}" -a "${cdlist[*]##${names[i]}}" = "${cdlist[*]}" ]; then
+	    names[j]=${names[i]}
+	    sizes[j]=${sizes[i]}
+	    ((parts[j]=${parts[i]}-1))
+	    ((j++))
+	fi
+	
+	if ((i >= j)); then
+	    unset names[i] parts[i] sizes[i]
+	    names=("${names[@]}") parts=("${parts[@]}") sizes=("${sizes[@]}")
+	else
+	    ((i++))
+	fi
+    done
+    # now we have the list of the hard disks :
+    #   names[] contains their name in /dev
+    #   sizes[] contains their size in blocks (1 kB)
+    #   parts[] contains their number of partitions
+}
+
+# This function collects some information in /proc and other places.
+# It should be called ASAP.
+
+function init {
+    #umount /mnt/cdrom >/dev/null 2>&1 # to avoid stupid recursive copying !
+    detect_cdrom
+    detect_disks
+    mkdir -p $ROOTDIR >/dev/null 2>&1
+}
+
+# displays the main menu
+# if an arg is passed, it will be used as the name entry of the default action.
+# it returns the name of the entry in REPLY
+# returns 0 if OK, 1 if Cancel/Exit.
+function menu_main {
+    REPLY=$(dialog --title " Formilux Installation Utility " --no-cancel --no-shadow ${1:+--default-item $1 }\
+	   --menu "Installation Menu\n\n   Press <Up>/<Down> to select an item.\n   Press <Tab> to move between [OK] and [Cancel].\n   Press <Enter> to confirm your choice." 24 80 14 \
+	  "PART" "Configure Partitions and File Systems" \
+          "SOURCE" "Select Packages Source" \
+	  "PKG" "Select which Packages to Install" \
+	  "CONFIG" "Build Configuration" \
+	  "SAVE" "Save Current Configuration" \
+	  "LILO" "Run LILO" \
+	  "UNMOUNT" "Unmount all File Systems" \
+	  "SHELL" "Get Access to a Shell" \
+	  "EXIT" "Exit this Utility" 2>&1 | grep -v EXIT)
+    [ -n "$REPLY" ]
+}
+
+
+# presents a list of hard disks and lets the user choose one.
+# the default one can be passed in $1
+# returns 0 if OK, 1 if Cancel/Exit.
+function menu_harddisk {
+    local -a args=( )
+    local i=0
+    local model
+    while ((i < ${#names[@]})); do
+	model='unknown model'
+	[ -e "/proc/ide/${names[i]}/model" ] && model=$(</proc/ide/${names[i]}/model)
+	args=("${args[@]}" "${names[i]}" "$model, $(humansize ${sizes[i]}k)B, ${parts[i]} part.")
+	((i++))
+    done
+	
+    REPLY=$(dialog --title " Formilux Installation Utility " --no-shadow  ${1:+--default-item $1 } --menu "\nSelect a Hard Disk to Configure\n\n   Press <Up>/<Down> to select an item.\n   Press <Tab> to move between [OK] and [Cancel].\n   Press <Enter> to confirm your choice." 24 80 12 "${args[@]}" "EXIT" "Exit this menu"  2>&1 |grep -v EXIT)
+    [ -n "$REPLY" ]
+}
+
+# presents a list of  hard disks partitions and lets the user choose one.
+# the disk is passed in $1
+# the default one can be passed in $2
+# returns 0 if OK, 1 if Cancel/Exit.
+function menu_partition {
+    local -a args=( )
+    local dev=$1
+    local disk=${1##/dev/}
+    local def=$2
+    local mnt
+    local device size id syst rest
+
+    for device in $(grep "^$dev" /tmp/fslist 2>/dev/null); do
+	size=$(grep "^$device " /tmp/fssize 2>/dev/null |cut -f2 -d' ')
+	mnt=$(grep "^$device " /tmp/fsmnt 2>/dev/null |cut -f2 -d' ')
+	id=$(grep "^$device " /tmp/fsid 2>/dev/null |cut -f2 -d' ')
+	syst=$(grep "^$device " /tmp/fsid 2>/dev/null |cut -f3 -d' ')
+	type=$(grep "^$device " /tmp/fstype 2>/dev/null |cut -f2 -d' ')
+	if [ -z "$mnt" ]; then
+	    def=${def:-${device##/dev/}}
+	    mnt="not assigned"
+	else
+	    mnt="assigned to $mnt"
+	fi
+	if [ -z "$type" ]; then
+	    def=${def:-${device##/dev/}}
+	    type="not formated"
+	else
+	    type="type $type"
+	fi
+	args=("${args[@]}" "${device##/dev/}" "$(humansize ${size}k)B, Id 0x$id($syst), $type, $mnt")
+    done
+
+    def=${def:-EXIT}
+    args=("${args[@]}" "CLEAR" "Clear ALL partitions on this disk" "FDISK" "Run fdisk on this disk")
+
+    REPLY=$(dialog --title " Formilux Installation Utility " --no-shadow  ${def:+--default-item $def} --menu "\nSelect a Partition\n\n   Press <Up>/<Down> to select an item.\n   Press <Tab> to move between [OK] and [Cancel].\n   Press <Enter> to confirm your choice." 24 80 12 "${args[@]}" "EXIT" "Exit this menu"  2>&1 |grep -v EXIT)
+    [ -n "$REPLY" ]
+}
+
+# reads the partition table on a disk and updates the associated files :
+#   /tmp/fslist, /tmp/fssize, /tmp/fsid, /tmp/fsmnt, /tmp/fstype
+# the disk device is passed in $1 (/dev/xxx). There's no return code.
+function disk_read_part {
+    local dev=$1
+    local disk=${1##/dev/}
+    local device begin end cyl size id syst rest file
+
+    rm -f /tmp/sfdisk.$disk
+    for file in fslist fssize fsid; do
+	grep -v "^$dev" /tmp/$file 2>/dev/null >/tmp/${file}-; mv /tmp/${file}- /tmp/$file
+    done
+
+    for file in fsmnt fstype; do
+	grep "^$dev" /tmp/$file 2>/dev/null >/tmp/$file.$disk
+	grep -v "^$dev" /tmp/$file 2>/dev/null >/tmp/${file}-; mv /tmp/${file}- /tmp/$file
+    done
+
+    sfdisk -l $dev | tr '*' ' ' | grep '^/dev/' >/tmp/sfdisk.$disk
+    while read device begin end cyl size id syst rest; do
+	# let's ignore empty and extended partitions
+	[ "$id" = "0" -o "$id" = "5" ] && continue
+	size=${size%+}
+	echo "$device" >> /tmp/fslist
+	echo "$device $size" >> /tmp/fssize
+	echo "$device $id $syst" >> /tmp/fsid
+	if [ "$id" != "82" ] || grep -q "^$device " /tmp/fsmnt.$disk && ! grep -q "^$device swap" /tmp/fsmnt.$disk; then
+	    grep "^$device " /tmp/fsmnt.$disk >> /tmp/fsmnt
+	    grep "^$device " /tmp/fstype.$disk >> /tmp/fstype
+	else
+	    echo "$device swap" >> /tmp/fsmnt
+	    # we want to keep a trace of the format status of the swap partition
+	    # instead of assuming it has already been formated
+	    grep "^$device " /tmp/fstype.$disk >> /tmp/fstype
+	    #echo "$device swap" >> /tmp/fstype
+	fi
+    done < /tmp/sfdisk.$disk
+    rm -f /tmp/sfdisk.$disk
+}
+
+# presents a list of possible actions for a partition :
+# - change its mount point
+# - format it
+# the partition is passed in $1
+# if a default choice should be proposed, its name must be in $2
+# returns 0 if OK, 1 if Cancel/Exit.
+function menu_setupfs {
+    local -a args=( )
+    local dev=$1
+    local def size type strext2s strext2l strext3 strreiser
+    local mnt
+
+    def=$2
+    mnt=$(grep "^$dev " /tmp/fsmnt 2>/dev/null |cut -f2 -d' ')
+    [ -z "$mnt" ] && { mnt="not assigned" ; def=${def:-"MNT"}; }
+
+    type=$(grep "^$dev " /tmp/fstype 2>/dev/null |cut -f2 -d' ')
+    [ -z "$type" ] && type="not formated"
+
+    size=$[ ($(grep "^$dev " /tmp/fssize 2>/dev/null | cut -f2 -d' ')+0) / 1024 ]
+
+    args=("MNT" "Change the mount point ($mnt)")
+
+    if [ "$mnt" = "swap" ]; then
+	args=("${args[@]}" "SWAP" "* mkswap $dev (format as swap)")
+	args=("${args[@]}" "SWAPC" "  mkswap -c $dev (format and check)")
+	def=${def:-SWAP}
+    else
+	strext2s="mke2fs -b 1024 -m 1 -s 1 $dev (format as small Ext2)"
+	strext2l="mke2fs -b 4096 -s 1 $dev (format as large Ext2)"
+	strext3="mke2fs -b 4096 -s 1 -j $dev (format as Ext3)"
+	strreiser="mkreiserfs -h r5 $dev (format as ReiserFS)"
+	if [ $size -lt 64 ]; then
+	    strext2s="* $strext2s"
+	    strext2l="  $strext2l"
+	    strext3="  $strext3"
+	    strreiser="  $strreiser"
+	    def=${def:-EXT2S}
+	else
+	    strext2s="  $strext2s"
+	    strext2l="  $strext2l"
+	    strext3="* $strext3"
+	    strreiser="  $strreiser"
+	    def=${def:-EXT3}
+	fi
+
+	args=("${args[@]}" "EXT2S" "$strext2s" "EXT2L" "$strext2l" "EXT3" "$strext3" "REISER" "$strreiser" )
+    fi
+    args=("${args[@]}" "SHELL" "Get Access to a Shell")
+    
+    REPLY=$(dialog --title " Formilux Installation Utility " --no-shadow  ${def:+--default-item $def} --menu "\nFormat and Mount Point\n\nChoose a mount point for this partition, then select a format command to format it and set its type. The '*' indicates the recommended format.\n\n   Press <Up>/<Down> to select an item.\n   Press <Tab> to move between [OK] and [Cancel].\n   Press <Enter> to confirm your choice." 24 80 8 "${args[@]}" "EXIT" "Exit this menu"  2>&1 |grep -v EXIT)
+    [ -n "$REPLY" ]
+}
+
+
+# lets the user change a mount point for a partition.
+# the partition is passed in $1
+# returns 0 if something changed, else 1.
+function menu_mount_point {
+    local mnt dev type id name
+    dev=$1
+    mnt=$(grep "^$dev " /tmp/fsmnt 2>/dev/null |cut -f2 -d' ')
+    id=$(grep "^$dev " /tmp/fsid 2>/dev/null |cut -f2 -d' ')
+    name=$(grep "^$dev " /tmp/fsid 2>/dev/null |cut -f3 -d' ')
+    type=$(grep "^$dev " /tmp/fstype 2>/dev/null |cut -f2 -d' ')
+
+    REPLY=$mnt
+    [ -z "$REPLY" -a "$id" = "82" ] && REPLY="swap"
+    [ -z "$REPLY" ] && ! grep -q " /boot$" /tmp/fsmnt && REPLY="/boot"
+    [ -z "$REPLY" ] && ! grep -q " /$" /tmp/fsmnt && REPLY="/"
+    [ -z "$REPLY" ] && ! grep -q " /var$" /tmp/fsmnt && REPLY="/var"
+    [ -z "$REPLY" ] && ! grep -q " /home$" /tmp/fsmnt && REPLY="/home"
+
+    REPLY=$(dialog --title " Formilux Installation Utility " --no-shadow --inputbox "Enter the mount point for partition $dev\n${id:+Partition Id=$id($name)}${type:+${id:+, }Formated as $type}\nEnter 'swap' to force it to become swap\n\n   Press <Tab> to move between [OK] and [Cancel].\n   Press <Enter> to confirm your choice." 12 60 $REPLY 2>&1 || echo $mnt)
+    if [ "$REPLY" != "$mnt" ]; then
+	(grep -v "^$dev " /tmp/fsmnt 2>/dev/null; echo "$dev $REPLY") >/tmp/fsmnt-
+	mv /tmp/fsmnt- /tmp/fsmnt
+	return 0
+    else
+	return 1
+    fi
+}
+
+
+# lets the user change the package directory
+# the entry is checked to be a valid directory
+# returns 0 if something changed, else 1.
+function menu_pkg_dir {
+    local old
+
+    old=$(readlink /var/flx-pkg 2>/dev/null)
+    REPLY=$old
+    while : ; do
+	REPLY=$(dialog --title " Formilux Installation Utility " --no-shadow --inputbox "Enter the new packages directory\nCurrently set to '$old'\n\n   Press <Tab> to move between [OK] and [Cancel].\n   Press <Enter> to confirm your choice." 12 60 $REPLY 2>&1 || echo $old)
+	if [ "$REPLY" != "$old" ]; then
+	    if [ -d "$REPLY/." ]; then
+		PKGDIR=$REPLY
+		rm -f /var/flx-pkg
+		ln -sf $REPLY /var/flx-pkg
+		return 0
+	    else
+		dialog --title " Formilux Installation Utility " --msgbox "'$REPLY' is not a valid directory. Please try again, or press [Cancel].\n" 8 60
+	    fi
+	else
+	    # cancel or no changes
+	    return 1
+	fi
+    done
+}
+
+# ask the user about the desired source of packages for the installation
+function menu_select_source {
+    local -a args=( )
+    args=("CDROM" "CD-ROM" "DISK" "Hard disk or USB storage device" "NFS" "Remove file-system over NFS" "DIR" "Pre-mounted directory")
+    REPLY=$(dialog --title " Formilux Installation Utility " --no-shadow --menu "\nSource Packages Selection\n\nChoose from which medium the source packages will be fetched.\n\n   Press <Up>/<Down> to select an item.\n   Press <Tab> to move between [OK] and [Cancel].\n   Press <Enter> to confirm your choice." 24 80 8 "${args[@]}" "EXIT" "Exit this menu"  2>&1 |grep -v EXIT)
+    [ -n "$REPLY" ]
+}
+
+
+# ask the user about the desired source cdrom
+# returns 0 if the CD could be mounted, 1 otherwise.
+function menu_select_cdrom {
+    local -a args=( )
+    local cdrom
+
+    umount -l /mnt/cdrom >/dev/null 2>&1
+    rm -f /dev/cdrom
+    rm -f /var/flx-pkg
+    PKGDIR=
+    case ${#cdlist[@]} in
+	0)
+	    dialog --title " Formilux Installation Utility " --msgbox "No CD-ROM device was detected on this system. Please load manually any appropriate module or choose another source medium." 12 60 ;
+	    rm -f /var/flx-pkg
+	    return 1
+	    ;;
+	1)
+	    ln -sf ${cdlist[0]} /dev/cdrom
+	    if mount /mnt/cdrom >/dev/null 2>&1 ; then
+		PKGDIR=/mnt/cdrom/pkg
+		ln -s $PKGDIR /var/flx-pkg
+		dialog --title " Formilux Installation Utility " --msgbox "/dev/${cdlist[0]} has been selected as the only CD-ROM device, and mounted successfully.\n" 8 60
+		return 0
+	    else
+		dialog --title " Formilux Installation Utility " --msgbox "/dev/${cdlist[0]} has been selected as the only CD-ROM device, but could not be mounted. Please insert a valid CD-ROM and try again.\n" 8 60
+		return 1
+	    fi
+	    ;;
+    esac
+
+    args=("AUTO" "Automatically find which drive contains a CD")
+    for cdrom in "${cdlist[@]}"; do
+	if [ -e "/proc/ide/$cdrom/model" ]; then
+	    args=("${args[@]}" "$cdrom" "$(cat /proc/ide/$cdrom/model)")
+	elif [ -z "${cdrom##sr*}" -o -z "${cdrom##scd*}" ]; then
+	    args=("${args[@]}" "$cdrom" "SCSI CD-ROM")
+	else
+	    args=("${args[@]}" "$cdrom" "Unknown CD-ROM model")
+	fi
+    done
+
+    cdrom="${args[0]}"
+    while [ -z "$PKGDIR" ]; do
+	rm -f /dev/cdrom
+	REPLY=$(dialog --title " Formilux Installation Utility " --no-shadow --default-item "$cdrom" --menu "\nCD-ROM\n\nSelect the CD-ROM drive which contains the Formilux CD-ROM you want to use for the installation.\n\n   Press <Up>/<Down> to select an item.\n   Press <Tab> to move between [OK] and [Cancel].\n   Press <Enter> to confirm your choice." 24 80 8 "${args[@]}" "EXIT" "Exit this menu"  2>&1 |grep -v EXIT)
+	cdrom=$REPLY
+	case "$REPLY" in
+	    "")
+		return 1
+		;;
+	    AUTO)
+		findcdrom
+		if [ ! -e /dev/cdrom ]; then
+		    dialog --title " Formilux Installation Utility " --msgbox "No drive containing a valid CD-ROM was found. Please insert a valid CD-ROM and try again.\n" 8 60
+		    continue
+		fi
+		;;
+	    *)
+		ln -sf $REPLY /dev/cdrom
+		;;
+	esac
+	if mount /mnt/cdrom >/dev/null 2>&1; then
+	    PKGDIR=/mnt/cdrom/pkg
+	    dialog --title " Formilux Installation Utility " --msgbox "/dev/$(readlink /dev/cdrom) has been selected as the new CD-ROM device, and mounted successfully.\n" 8 60
+	    return 0
+	else
+	    dialog --title " Formilux Installation Utility " --msgbox "/dev/$(readlink /dev/cdrom) has been selected as the new CD-ROM device, but could not be mounted. Please insert a valid CD-ROM and try again.\n" 8 60
+	fi
+    done
+    return 1
+}
+
+
+# ask the user a question to which he can reply by "yes" or "no".
+# A simple message is passed in $1
+# if $2 is NOT EMPTY, the default response will be NO.
+# returns 0 if No, 1 if Yes
+function menu_yesno {
+    dialog --title " Formilux Installation Utility " --no-shadow  ${2:+--defaultno} --yesno "$1" 12 65
+}
+
+# user interface functions
+function ask {
+        echo -n "$1 [$2] : "; read 
+        if [ "$REPLY" = "" ]; then REPLY=$2; fi
+}
+
+function yesno {
+        echo -n "$1 [$2] : "; read ; REPLY=`echo $REPLY | cut -c1`
+        if [ "$REPLY" = "" ]; then REPLY=$2; fi
+        if [ "$REPLY" = o -o "$REPLY" = y -o "$REPLY" = Y ]; then
+           REPLY="y"
+        fi
+}
+
+#
+function check_directories {
+    if [ ! -d $ROOTDIR/etc/. ] ; then
+	if [ -d $ROOTDIR/boot/etc/. ] ; then 
+	    ln -s boot/etc $ROOTDIR/etc
+	else 
+	    echo "Can't find 'etc' directory neither in '/' nor in '/boot'"
+	    return 1
+	fi
+    fi
+    if [ ! -d $ROOTDIR/var/. ] ; then 
+	mkdir $ROOTDIR/var ; fi
+    if [ ! -d $ROOTDIR/var/tmp ] ; then 
+	mkdir $ROOTDIR/var/tmp ; chmod 1777 $ROOTDIR/var/tmp ; fi
+    if [ ! -d $ROOTDIR/var/run ] ; then 
+	mkdir $ROOTDIR/var/run ; fi
+    if [ ! -d $ROOTDIR/var/spool ] ; then 
+	mkdir $ROOTDIR/var/spool ; fi
+    if [ ! -d $ROOTDIR/var/log ] ; then 
+	mkdir $ROOTDIR/var/log ; fi
+    if [ ! -d $ROOTDIR/var/cache ] ; then 
+	mkdir $ROOTDIR/var/cache ; fi
+    if [ ! -d $ROOTDIR/var/adm/. ] ; then 
+	ln -s log $ROOTDIR/var/adm ; fi
+
+    # /tmp should exist, either as a dir or a link.
+    if [ ! -e $ROOTDIR/tmp ] ; then 
+	mkdir $ROOTDIR/tmp ; chmod 1777 $ROOTDIR/tmp ; fi
+
+    return 0
+}
+
+# this function lists all hard drives found, but hides CDROMs
+function list_disks {
+    echo "${names[@]}"
+    #for i in `tail +3 /proc/partitions | awk '{print $4}' | grep '\([a-zA-Z]$\)\|\(c[0-9]*d[0-9]*$\)'`; do
+    #	 if ! echo $CDROMS | grep -qw $i; then
+    #	 echo $i
+    #	 fi
+    #done
+}
+
+# mounts all the new file-systems, and creates the mount points when needed
+function mount_new_fs {
+    local -a mplist=($(sort -k2.1 /tmp/fsmnt 2>/dev/null|cut -f2 -d' ') )
+    local fs mp type
+
+    rm -f /tmp/fstab
+
+    echo "/proc		/proc		proc	defaults			0 0" >> /tmp/fstab
+    echo "#/dev		/dev		tmpfs	size=0,nr_inodes=4096,remount	0 0" >> /tmp/fstab
+    echo "#/var/empty	/var/empty	tmpfs	size=0,nr_inodes=1,ro,remount	0 0" >> /tmp/fstab
+    echo "/dev/pts	/dev/pts	devpts	defaults			0 0" >> /tmp/fstab
+    echo "/dev/cdrom	/mnt/cdrom	iso9660	defaults,noauto,ro,users	0 0" >> /tmp/fstab
+
+    for mp in "${mplist[@]}"; do
+	fs=$(grep " $mp\$" /tmp/fsmnt 2>/dev/null|cut -f1 -d' ')
+	type=$(grep "^$fs " /tmp/fstype 2>/dev/null|cut -f2 -d' ')
+	if [ "$mp" != "swap" ]; then
+	    mkdir -p -m 0755 $ROOTDIR$mp 2>/dev/null
+	    mount -t $type $fs $ROOTDIR$mp
+	fi
+	if [ "$mp" = "/" ]; then
+	    echo "#$fs	$mp	$type	defaults,ro			1 1" >> /tmp/fstab
+	    echo "/dev/root	$mp	$type	defaults,ro			1 1" >> /tmp/fstab
+	    mkdir -p -m 0755 $ROOTDIR/dev $ROOTDIR/proc $ROOTDIR/etc
+	    mount -t proc proc $ROOTDIR/proc  # may be needed for compressed files
+	elif [ "$mp" = "/boot" ]; then
+	    echo "$fs	$mp		$type	defaults,ro			1 2" >> /tmp/fstab
+	elif [ "$mp" = "swap" ]; then
+	    echo "$fs	$mp		$type	defaults			0 0" >> /tmp/fstab
+	else
+	    echo "$fs	$mp		$type	defaults			1 2" >> /tmp/fstab
+	fi
+    done
+
+}
+
+# unmounts all the new file-systems
+function unmount_new_fs {
+    local -a mplist=($(sort -rk 2.1 /proc/mounts 2>/dev/null | cut -f2 -d' ' | grep "^$ROOTDIR") )
+    local fs mp type
+
+    for mp in "${mplist[@]}"; do
+	if [ "$mp" != "swap" ]; then
+	    umount $mp >/dev/null 2>&1
+	fi
+    done
+}
+
+
+function setup_part {
+
+    if [ -e /tmp/devmap -a -e /tmp/fstab ]; then
+	echo "Filesystems are currently configured this way :"
+	for i in `cut -f1 -d' ' /tmp/devmap`; do grep "^$i[ 	]" /tmp/fstab | awk '{print $1 " => " $2 }'; done
+	echo "-- end of list --"
+	yesno "Do you want to change something (y/n) ?" "n"
+	[ "$REPLY" = "y" ] || return 0
+	cp /tmp/fstab /tmp/fstab-
+	cp /tmp/devmap /tmp/devmap-
+    else
+	touch /tmp/fstab- /tmp/devmap-
+    fi
+
+    # clean temporary files
+    rm -rf /tmp/temp.$$ /tmp/fstab /tmp/devmap
+
+    # unmount previously mounted file-systems
+    for part in $(grep " $ROOTDIR" /proc/mounts|awk '{print $2}'|sort -r); do
+	umount $part;
+    done
+
+    echo "/proc		/proc		proc	defaults			0 0" >> /tmp/fstab
+    echo "#/dev		/dev		tmpfs	size=0,nr_inodes=4096,remount	0 0" >> /tmp/fstab
+    echo "/dev/pts	/dev/pts	devpts	defaults			0 0" >> /tmp/fstab
+    echo "/dev/cdrom	/mnt/cdrom	iso9660	defaults,noauto,ro,users	0 0" >> /tmp/fstab
+
+    echo "/dev/$(readlink /dev/cdrom) /dev/cdrom" >> /tmp/devmap 
+    (grep -v ' CDROM$' /tmp/mounts 2>/dev/null; echo "/dev/$(readlink /dev/cdrom) CDROM") >/tmp/mounts- && mv /tmp/mounts- /tmp/mounts
+
+    # scan all disk
+    # for disk in $(list_disks); do
+    REPLY=${names[0]}
+    while menu_harddisk $REPLY; do
+	disk=${REPLY##/dev/}
+
+   # look for all detected partitions
+#   for spart in `sfdisk -l /dev/$disk 2>/dev/null | grep "^/" |tr '*' ' '| cut -f3- -d'/' | awk '{print $1 ":" $6 }'` ; do
+
+
+	REPLY=
+	while { disk_read_part /dev/$disk ; menu_partition /dev/$disk $REPLY; } do
+	    [ -z "$REPLY" ] && break
+	    if [ "$REPLY" = "CLEAR" ] ; then
+		if menu_yesno "Warning !\n\nThis will erase the partition table for /dev/$disk.\nAll data will be lost.\n\nDo you still want to proceed ?" N; then
+		    dd if=/dev/zero of=/dev/$disk bs=1024 count=1 > /dev/null 2>&1
+		    (echo o ; echo w ) | fdisk /dev/$disk > /dev/null 2>&1
+		fi
+		REPLY=FDISK
+		continue
+	    elif [ "$REPLY" = "FDISK" ]; then
+		fdisk /dev/$disk
+		REPLY=
+		continue
+	    else
+		echo "menu format/mount pour $REPLY"
+	    fi
+
+
+
+
+
+     # partition name
+     part=`echo $spart|cut -f1 -d:`
+     set -- `echo $spart | tr ':' ' '`
+     set -- $* `fdisk -s /dev/$1` `sfdisk -l /dev/$disk 2>/dev/null | grep "/dev/$1 " | cut -c15-`
+
+     # hide mounted partitions
+     part=/dev/$part
+     if grep -q "$part " /proc/mounts > /dev/null ; then continue ; fi
+
+     # hide empty or extended partitions
+     if [ $2 = 0 -o $2 = 5 ] ; then continue ; fi
+
+     # partition size in Mega Bytes
+     size=$[ $3 / 1024]
+     # partition type in human readable form
+     type=$2
+     shift 8
+     htype=$* 
+     
+     # redo while not a good value
+     askagain=y
+     unset mountpoint
+     while [ "$askagain" = "y" ] ; do
+       askagain=n
+       echo 
+       echo "Partition : $part ($htype, ${size} MB)"
+
+       # non linux partition
+       if [ $type != 82 -a $type != 83 -a $type != 8e -a $type != fd ] ; then 
+         yesno "$part isn't a standard linux partition, would you like an entry in /etc/fstab (y/n)?" "n"
+         if [ "$REPLY" = "n" ] ; then continue ; fi
+	 fstype=noauto
+       else
+         fstype=auto
+       fi
+ 
+       # getting mount point
+       if [ $type = 82 ] ; then
+         mountpoint=swap
+       else
+         mountpoint=$(grep "^$part[ 	]" /tmp/fstab- | awk '{print $2 }')
+       fi
+       ask "  Choose a mount point (swap,/,/boot,/var,...) or [Enter] for none" "$mountpoint"
+       # remove useless leading and trailing slashes
+       mountpoint=$(echo $REPLY|sed 's@^\([/]*\)\(/.*\)$@\2@'|sed 's@^\(.*[^/]\)\([/]*\)$@\1@')
+       if [ -z "$mountpoint" ] ; then break ; fi
+
+       case "$mountpoint" in
+         /)     echo "$part /dev/root" >> /tmp/devmap ;;
+         /boot) echo "$part /dev/boot" >> /tmp/devmap ;;
+         swap)  echo "$part /dev/swap" >> /tmp/devmap ;
+		echo "$part	swap	swap	defaults	0 0" >> /tmp/fstab;;
+         *)     echo "$part /dev/fs/$(echo ${mountpoint#/} |tr '/' '.')" >> /tmp/devmap ;;
+       esac
+
+       
+	case "$mountpoint" in
+	    swap)
+		(grep -v "^$part " /tmp/mounts 2>/dev/null; echo "$part SWAP") >/tmp/mounts- && mv /tmp/mounts- /tmp/mounts;;
+	    *)
+		(grep -v "^$part " /tmp/mounts 2>/dev/null; echo "$part $mountpoint") >/tmp/mounts- && mv /tmp/mounts- /tmp/mounts;;
+	esac
+
+
+       formatcmd=''
+       # format linux partitions
+       if [ $type = 82 -o $type = 83 -o $type = 8e -o $type = fd ] ; then 
+         # tell how to format
+         echo "  0: -- DO NOT format this partition (default) --" ; ch=0
+         if [ "$mountpoint" = "swap" ] ; then 
+           ch1="mkswap $part" ; echo " >1: $ch1"
+           ch2="mkswap -c $part" ; echo "  2: $ch2 (with check)"
+	 elif [ "`echo $mountpoint|cut -c1`" = "/" ] ; then
+           ch1="mke2fs -b 1024 -m 1 -s 1 $part"
+           if [ "$size" -lt 64 ]; then
+              echo " >1: $ch1 (small ext2)"
+           else
+              echo "  1: $ch1 (small ext2)"
+           fi
+           ch2="mke2fs -b 4096 -s 1 $part" ; echo "  2: $ch2 (large ext2)"
+           ch3="mke2fs -b 4096 -s 1 -j $part"
+           if [ "$size" -ge 64 ]; then
+              echo " >3: $ch3 (ext3)"
+           else
+              echo "  3: $ch3 (ext3)"
+           fi
+           ch4="mkreiserfs -h r5 $part" ; echo "  4: $ch4 (reiserfs)"
+         fi
+         ask "  Select a format method or enter the complete command" "$ch"
+         case $REPLY in
+           0)     formatcmd='' ;;
+           [1-9]) formatcmd=`eval echo '\$ch'$REPLY` ;;
+           *)     formatcmd=$REPLY ;;
+         esac
+       fi
+     done
+     
+     # execute format
+     if [ "$formatcmd" ] ; then
+       echo -n "Doing: '$formatcmd': "
+       eval "echo y | $formatcmd" > /tmp/error.$$ 2>&1
+       if [ "$?" = "0" ] ; then 
+         echo "done."
+       else 
+         echo "failed."
+         echo "--------------------------------------------------------"
+         echo "$formatcmd said:"
+         sed -e "s/^/>> /" /tmp/error.$$
+         echo "----------- Filesystem will not be mounted -------------"
+         mountpoint=""
+       fi 
+     fi
+     if [ "`echo $mountpoint|cut -c1`" = "/" ] ; then
+       echo "$mountpoint -t $fstype $part" >> /tmp/temp.$$
+     fi
+   done 
+ done
+
+ # now we will mount all the filesystems we have just created, and add them to fstab
+ sort /tmp/temp.$$ | while read ; do
+   set -- $REPLY
+   mp=$1 ; shift
+   if [ ! -d $ROOTDIR$mp ] ; then mkdir -p $ROOTDIR$mp ; echo "Creating directory $mp" ; fi
+   if [ $2 != noauto ] ; then 
+     echo -n "Mounting $mp ($3): "
+     mount -n $* $ROOTDIR$mp > /dev/null 2>&1 
+     if [ "$?" = "0" ] ; then echo "done." ; else
+       echo "failed."
+       echo "##failed## $3	$mp	$2	defaults	1 1" >> /tmp/fstab
+     fi
+   else 
+     echo "#$3	$1      	auto		defaults	0 0" >> /tmp/fstab
+   fi
+ done
+ mount | grep '^[ 	]*/' | grep "$ROOTDIR[/ 	]" | sed "s@$ROOTDIR[/]*@/@" | \
+   awk '{ printf "%s\t%s\t%s\tdefaults%s\t1 %s\n",$1,$3,$5,($3=="/" || $3=="/boot")?",ro":"",($3=="/")?"1":"2" }' >> /tmp/fstab
+ #grep '^/' /proc/swaps | awk '{ print $1 "\tswap       \tswap       \tdefault	0 0"}' >> /tmp/fstab
+
+ mkdir -p -m 0755 $ROOTDIR/dev $ROOTDIR/proc $ROOTDIR/etc $ROOTDIR/mnt/cdrom
+ mount -t proc proc $ROOTDIR/proc  # may be needed for compressed files
+
+### sed -e "s,^#L.*cdrom\$,ln ` readlink /dev/cdrom` /dev/cdrom," < /.preinit > $ROOTDIR/.preinit
+
+ rm -f /tmp/temp.$$
+ return 0
+}
+
+function setup_keyboard {
+ sed -n '/^service keyboard/,/^ *$/p' < /etc/config.rc
+}
+
+function setup_mouse {
+ sed -n '/^service mouse/,/^ *$/p' < /etc/config.rc
+}
+
+function setup_network {
+ echo "# hostname formilux"
+ echo "# interface eth0"
+ echo "#    ip address 10.101.20.4/16"
+ echo "#    ip dhcp"
+ echo "# service network"
+}
+
+# (re)build config.rc, startup.rc, fstab, devmap, lilo.conf
+function setup_config {
+  local MNT="$1"
+  local MPWD=$PWD
+  local TMP=/tmp/newconf
+
+  if [ ! -w /tmp ] ; then
+    echo "Directory /tmp not writable"; exit 1
+  fi
+
+  mkdir -p $TMP >/dev/null 2>&1
+
+  if [ "$MNT" = "" ] ; then MNT="$ROOTDIR"; fi
+
+# copy startup.rc and config.rc
+  rm -f $TMP/config.rc $TMP/startup.rc
+  if [ "$UPDATE_ONLY" != "y" -o ! -e $MNT/etc/config.rc ]; then
+    echo           >> $TMP/config.rc
+    echo "# service syslogd" >> $TMP/config.rc
+    echo           >> $TMP/config.rc
+    setup_network  >> $TMP/config.rc
+    echo           >> $TMP/config.rc
+    setup_keyboard >> $TMP/config.rc
+    setup_mouse    >> $TMP/config.rc
+    chmod 644 $TMP/config.rc
+  fi
+
+  if [ "$UPDATE_ONLY" != "y" -o ! -e $MNT/etc/startup.rc ]; then
+    echo "#!/bin/sh" >> $TMP/startup.rc
+    echo "echo -n \"Default configuration ... \" " >> $TMP/startup.rc
+    echo "/sbin/init.d/sysprofiles /etc/config.rc" >> $TMP/startup.rc
+    chmod 755 $TMP/startup.rc
+  fi
+
+# copy fstab
+  cp /tmp/fstab $TMP/fstab
+
+# copy devmap
+  BOOTDEV=${BOOTDEV:-`echo $ROOTDEV | sed 's/[0-9]\+$//'`}
+  ask "Choose device on which LILO will be installed " $BOOTDEV
+  BOOTDEV=$REPLY
+  grep -v '/dev/\(mbr\|cdrom\)$' /tmp/devmap > $TMP/devmap 2>/dev/null
+  echo "$BOOTDEV /dev/mbr" >> $TMP/devmap
+  echo "/dev/$(readlink /dev/cdrom) /dev/cdrom" >> $TMP/devmap 
+
+
+# build a new lilo.conf 
+  cd $MNT
+
+  KERNVER=`ls boot/*/bzImage | tail -1 | cut -f2 -d/`
+  KERNLBL=`echo $KERNVER | tr -d '.-'`
+  cat > $TMP/lilo.conf <<EOF
+serial = 0,9600n8
+boot = $BOOTDEV
+default = l$KERNLBL
+EOF
+
+  for bootimg in `ls boot/*/bzImage` ; do
+    echo "image = /$bootimg" >> $TMP/lilo.conf
+    echo "  label = l`echo $bootimg | cut -f2 -d/ | tr -d '.-'`" >> $TMP/lilo.conf
+    echo "  append = \"root=$ROOTDEV\"" >> $TMP/lilo.conf
+    echo "  read-only" >> $TMP/lilo.conf
+  done
+
+  if [ `grep "label =" $TMP/lilo.conf | wc -l` = 0 ]; then
+    echo
+    echo "WARNING!!! no kernel was found in $MNT/boot !!!"
+    echo "You must install a kernel and edit $TMP/lilo.conf or your system will never boot."
+    echo
+    sleep 1
+  fi
+
+# copy /.preinit
+  if [ -e $MNT/.preinit -a "$UPDATE_ONLY" = "y" ]; then
+    cp $MNT/.preinit $TMP/.preinit
+  else
+    cp /.preinit $TMP/.preinit
+  fi
+
+  # 1st complicated part : merge old and new fstab.
+  # Method:
+  #  - mount points only in old fstab are kept as-is
+  #  - mount points in both with same types only have their dev updated
+  #  - mount points in both with diff types are fully updated
+  #  - mount points only in new fstab are merged
+  if [ "$UPDATE_ONLY" = "y" -a -e $MNT/etc/fstab ]; then
+    rm -f $TMP/fstab
+    while read; do 
+      set -- $REPLY
+      if ! grep -q "^[^ 	]\+[ 	]\+${2}[ 	]" /tmp/fstab; then
+        # not found
+	echo "$REPLY" >> $TMP/fstab
+      elif ! grep -q "^[^ 	]\+[ 	]\+${2}[ 	]\+${3}[ 	]" /tmp/fstab; then
+        # not found with the same type
+        echo "##old##$REPLY" >> $TMP/fstab 
+        grep "^[^ 	]\+[ 	]\+${2}[ 	]" /tmp/fstab >> $TMP/fstab
+      else
+        # found with the same type. We may have to update the device
+        dev=`grep "^[^# 	]\+[ 	]\+${2}[ 	]" /tmp/fstab|head -1|awk '{print $1}'`
+        if [ "$dev" -a "$dev" != "$1" ]; then
+           echo "##old##$REPLY" >> $TMP/fstab 
+           echo "$dev	$2	$3	$4	$5 $6" >> $TMP/fstab  # keep options
+        else
+           echo "$REPLY" >> $TMP/fstab  # was commented or the same
+        fi
+      fi 
+    done < $MNT/etc/fstab
+
+    # add new entries
+    while read; do 
+      set -- $REPLY
+      if ! grep -q "^[^ 	]\+[ 	]\+${2}[ 	]" $TMP/fstab; then
+	echo "$REPLY" >> $TMP/fstab
+      fi 
+    done < /tmp/fstab
+  fi
+
+  # try to update lilo.conf
+
+  if [ -e $MNT/etc/lilo.conf -a "$UPDATE_ONLY" = "y" ]; then
+    rm -f $TMP/lilo.conf
+    if grep -q "^image.*$KERNVER" $MNT/etc/lilo.conf; then
+      # the latest kernel is referenced. We can use this conf.
+      (echo "boot = $BOOTDEV" ; grep -v "^boot[ 	]*=[ 	]*$BOOTDEV" $MNT/etc/lilo.conf | sed 's/^\(boot[ 	]*=\)/##old##\1/') > $TMP/lilo.conf
+    else
+      # the latest kernel is missing from lilo.conf.
+      (echo "boot = $BOOTDEV" ; grep -v "^boot[ 	]*=[ 	]*$BOOTDEV" $MNT/etc/lilo.conf | sed 's/^\(boot[ 	]*=\)/##old##\1/') | sed -e 's:^\(image.*=[^/]*/boot/\)\([^/]*\)\(/.*\)$:\1'$KERNVER'\3:' > $TMP/lilo.conf
+    fi
+  fi
+ 
+  # now, we may have to update .preinit to create aliased entries.
+  # we remove all references to devices that have been updated
+
+  grep -v "^[#]*\(ln\|L\).*[ 	]\+\($(echo `cut -f2 -d' ' $TMP/devmap`|sed 's@ @\\|@g')\)" $TMP/.preinit > $TMP/.preinit-
+  grep -v ' /dev/fs/' $TMP/devmap | sed 's@^/dev/@ln @' >> $TMP/.preinit-
+  if grep -q ' /dev/fs' $TMP/devmap; then
+    if ! grep -q "^\(md\|M\)[ 	]\+/dev/fs" $TMP/.preinit-; then
+       echo "md /dev/fs 755" >> $TMP/.preinit-
+    fi
+    grep ' /dev/fs/' $TMP/devmap | sed 's@^/dev@ln ..@' >> $TMP/.preinit-
+  fi
+  mv $TMP/.preinit- $TMP/.preinit ; chmod 711 $TMP/.preinit
+
+  rm -f $TMP/passwd
+  if [ "$UPDATE_ONLY" != "y" -o ! -e $MNT/etc/passwd ]; then
+    sed -e 's@/home/admin@/root@' < /etc/passwd |grep -v '^\(squid:\|pdnsd:\|flx:\|install:\)' > $TMP/passwd
+    chmod 644 $TMP/passwd
+  fi
+
+  # if /var is on its own filesystem, /tmp must be a true filesystem too.
+  if grep -q ' \(/dev/fs/var\|/dev/fs/var\.tmp\)$' $TMP/devmap; then
+    if ! grep -q "^[^ 	]\+[ 	]\+/tmp[ 	]" $TMP/fstab; then
+      echo "/tmp		/tmp	tmpfs	defaults	0 0" >> $TMP/fstab
+    fi 
+  fi 
+       
+  cd $MPWD
+  return 0
+}
+
+function apply_config {
+  local MNT=$1
+  local TMP=/tmp/newconf
+
+  [ -e $TMP/.preinit ]   && (rm -f $MNT/.preinit       ; cp -p $TMP/.preinit   $MNT)
+  [ -e $TMP/passwd ]     && (rm -f $MNT/etc/passwd     ; cp -p $TMP/passwd     $MNT/etc)
+  [ -e $TMP/lilo.conf ]  && (rm -f $MNT/etc/lilo.conf  ; cp -p $TMP/lilo.conf  $MNT/etc)
+  [ -e $TMP/fstab ]      && (rm -f $MNT/etc/fstab      ; cp -p $TMP/fstab      $MNT/etc)
+  [ -e $TMP/config.rc ]  && (rm -f $MNT/etc/config.rc  ; cp -p $TMP/config.rc  $MNT/etc)
+  [ -e $TMP/startup.rc ] && (rm -f $MNT/etc/startup.rc ; cp -p $TMP/startup.rc $MNT/etc)
+
+  # replace /tmp with a directory if needed
+  if grep -q "^[^ 	]\+[ 	]\+/tmp[ 	]" $TMP/fstab; then
+    if [ -L $MNT/tmp ]; then rm -f $MNT/tmp && mkdir -m 1777 $MNT/tmp >/dev/null 2>&1; fi
+  fi 
+  return 0
+}
+
+function do_lilo {
+  if [ -e $ROOTDIR/dev -a -e $ROOTDIR/.preinit -a -e $ROOTDIR/etc/lilo.conf ]; then
+    chroot $ROOTDIR /.preinit rebuild
+    chroot $ROOTDIR /sbin/lilo || lilo -r $ROOTDIR
+    umount $ROOTDIR/dev  # remove what .preinit has installed
+  else
+    echo "LILO has NOT been run because it needs /dev, /.preinit, and /etc/lilo.conf"
+  fi
+  return 0
+}
+
+
+
+# main
+
+ROOTDIR=/var/mount
+PKGDIR=/home/pkg
+SHELLDIR=/
+
+init
+
+if [ $0 = "mkdisk" ] ; then setup_part && exit 0 ; exit 1 ; 
+elif [ $0 = "mkconfig" ] ; then setup_config $1 && exit 0 ; exit 1 ; 
+elif [ $0 = "doconfig" ] ; then apply_config $1 && exit 0 ; exit 1 ; 
+fi
+
+end=0
+while [ $# -ge 1 -a "$end" -ne 1 ] ; do
+  case $1 in
+    --disk) setup_part;;
+    --config) setup_config $2; shift;;
+    --apply) apply_config $2; shift;;
+    --) end=1;;
+    *) end=1;; 
+  esac
+  if [ "$end" -eq 1 ] ; then break ; fi
+  shift
+done
+
+action="PART"
+while [ -n "$action" ] ; do
+  
+    ROOTDEV=$(mount | grep " on $ROOTDIR " | cut -f1 -d' ')
+  
+#  echo
+#  echo "Possible actions are :"
+#  echo "1: Run fdisk"
+#  echo "2: Setup filesystems"
+#  echo "3: Install packages"
+#  echo "4: Build running config"
+#  echo "5: Save built config for next reboot"
+#  echo "6: Run lilo"
+#  echo "7: Unmount all"
+#  echo "s: Shell"
+#  echo "q: Quit"
+#
+#  ask "Select an action (1..7/s/q)" "$action"
+
+    menu_main $action
+
+    [ -z "$REPLY" ] && break
+
+    if [ "$REPLY" = "SHELL" ] ; then (cd $SHELLDIR; echo -n "Current directory : "; pwd; bash -i); REPLY=$action; continue; fi
+
+    case $REPLY in
+    PART) 
+      # unmount previously mounted file-systems
+      #for part in $(grep " $ROOTDIR" /proc/mounts|awk '{print $2}'|sort -r); do umount $part; done
+      unmount_new_fs
+      detect_disks
+      REPLY=${names[0]}
+      while menu_harddisk $REPLY; do
+	disk=${REPLY##/dev/}
+
+        #sfdisk -l /dev/$disk
+        #yesno "Clear partition table for '/dev/$disk' (y/n)?" "n"
+	REPLY=
+	while { disk_read_part /dev/$disk ; menu_partition /dev/$disk $REPLY; } do
+	    part=$REPLY
+	    [ -z "$REPLY" ] && break
+	    if [ "$REPLY" = "CLEAR" ] ; then
+		if menu_yesno "Warning !\n\nThis will erase the partition table for /dev/$disk.\nAll data will be lost.\n\nDo you still want to proceed ?" N; then
+		    dd if=/dev/zero of=/dev/$disk bs=1024 count=1 > /dev/null 2>&1
+		    (echo o ; echo w ) | fdisk /dev/$disk > /dev/null 2>&1
+		fi
+		REPLY=FDISK
+	    elif [ "$REPLY" = "FDISK" ]; then
+		fdisk /dev/$disk
+		REPLY=
+	    else
+		part=$REPLY
+		REPLY=
+		while menu_setupfs /dev/$part $REPLY; do
+		    case "$REPLY" in
+		    SHELL)
+			(cd $SHELLDIR; echo -n "Current directory : "; pwd; bash -i)
+			(grep -v "^/dev/$part " /tmp/fstype 2>/dev/null; echo "/dev/$part auto") >/tmp/fstype-
+			mv /tmp/fstype- /tmp/fstype
+			# goes automatically to default format
+			REPLY=
+			;;
+		    MNT)
+			menu_mount_point /dev/$part
+			# goes automatically to default format
+			REPLY=
+			;;
+		    SWAP)
+			mkswap /dev/$part
+			(grep -v "^/dev/$part " /tmp/fstype 2>/dev/null; echo "/dev/$part swap") >/tmp/fstype-
+			mv /tmp/fstype- /tmp/fstype
+			REPLY=EXIT
+			;;
+		    SWAPC)
+			mkswap -c /dev/$part
+			(grep -v "^/dev/$part " /tmp/fstype 2>/dev/null; echo "/dev/$part swap") >/tmp/fstype-
+			mv /tmp/fstype- /tmp/fstype
+			REPLY=EXIT
+			;;
+		    EXT2S)
+			mke2fs -b 1024 -m 1 -s 1 /dev/$part
+			(grep -v "^/dev/$part " /tmp/fstype 2>/dev/null; echo "/dev/$part ext2") >/tmp/fstype-
+			mv /tmp/fstype- /tmp/fstype
+			REPLY=EXIT
+			;;
+		    EXT2L)
+			mke2fs -b 4096 -s 1 /dev/$part
+			(grep -v "^/dev/$part " /tmp/fstype 2>/dev/null; echo "/dev/$part ext2") >/tmp/fstype-
+			mv /tmp/fstype- /tmp/fstype
+			REPLY=EXIT
+			;;
+		    EXT3)
+			mke2fs -b 4096 -s 1 -j /dev/$part
+			(grep -v "^/dev/$part " /tmp/fstype 2>/dev/null; echo "/dev/$part ext3") >/tmp/fstype-
+			mv /tmp/fstype- /tmp/fstype
+			REPLY=EXIT
+			;;
+		    REISER)
+			mkreiserfs -h r5 /dev/$part
+			(grep -v "^/dev/$part " /tmp/fstype 2>/dev/null; echo "/dev/$part reiserfs") >/tmp/fstype-
+			mv /tmp/fstype- /tmp/fstype
+			REPLY=EXIT
+			;;
+		    esac
+		    # this is done to exit right after an mkfs
+		    [ "$REPLY" = "EXIT" ] && break;
+		done
+		REPLY=
+	    fi
+	done
+	# things might have changed !
+	detect_disks
+	REPLY=/dev/$disk
+      done 
+      # we now have to mount all these file systems
+      mount_new_fs
+      SHELLDIR=/
+      action=SOURCE
+      ;;
+    SOURCE) 
+	action=SOURCE
+	while menu_select_source; do
+	    case "$REPLY" in
+		CDROM)
+		    menu_select_cdrom && break;
+		    ;;
+		DISK)
+		    menu_select_disk
+		    ;;
+		NFS)
+		    menu_select_nfs
+		    ;;
+		DIR)
+		    menu_select_dir
+		    ;;
+	    esac
+	done
+	PKGDIR=$(readlink /var/flx-pkg 2>/dev/null)
+	[ -d "/var/flx-pkg/." ] && action=PKG
+	;;
+    PKG) 
+	cd /
+	if [ "$ROOTDEV" != "" ] ; then
+	    #ask "Packages directory, or files pattern ($PKGDIR, $PKGDIR/*.lst, *.prf, *.tgz)"$'\n'"   " $PKGDIR ; PKGDIR="$REPLY"
+	    #if [ -d "$PKGDIR" ]; then
+	    #  list=`cd $PKGDIR && ls *.prf *.lst *.tgz 2>/dev/null`
+	    #else
+	    #  list=`basename "$PKGDIR"`
+	    #  PKGDIR=`dirname "$PKGDIR"`
+	    #  list=$(cd $PKGDIR && echo $list)
+	    #fi
+	    menu_pkg_dir
+	    list=( ); idx=0
+	    for pack in $(cd $PKGDIR && echo *.{prf,tgz}); do
+		list[idx++]=$pack
+		list[idx++]=""
+		if [ -z "${pack##[0-9][0-9][0-9]_*}" ]; then
+		    # pre-selects every numbered package
+		    list[idx++]="on"
+		else
+		    list[idx++]="off"
+		fi
+	    done
+
+	    list=( $(dialog --title " Formilux Installation Utility " --no-shadow \
+		--checklist "Packages Selection\n\n   Press <Space> to select/deselect a package.\n   Press <Up>/<Down> to select an item.\n   Press <Tab> to move between [OK] and [Cancel].\n   Press <Enter> to install your selection." 24 80 12 "${list[@]}" 2>&1) )
+	
+	    # dialog returns quoted words
+	    eval list=( "${list[@]}" )
+	    [ ${#list[@]} -gt 0 ] || break
+	
+	    for pack in "${list[@]}" ; do
+		case "$pack" in
+		    *tgz)
+			[ -d "$ROOTDIR" ] || mkdir -p -m 0755 $ROOTDIR
+			tar zpxf $PKGDIR/$pack -C $ROOTDIR ;;
+		    *prf)
+			flxextract -R $ROOTDIR -i $PKGDIR/$pack ;;
+		esac
+	    done 
+	    check_directories || exit 1
+	    SHELLDIR=/
+	    action=CONFIG
+	else
+	    action=PART
+	fi
+	;;
+    CONFIG) 
+	check_directories || exit 1
+	if [ "$UPDATE_ONLY" != "n" -a "$UPDATE_ONLY" != "y" ]; then
+	echo "Existing files can be REPLACED or UPDATED."
+	    yesno "Do you prefer to UPDATE existing files (y/n) ?" "y"
+	    UPDATE_ONLY="$REPLY"
+	fi
+	setup_config $ROOTDIR 
+	echo "done."
+	echo "New files have been written to /tmp/newconf/"
+	echo "You can check them now by starting a shell."
+	SHELLDIR=/tmp/newconf
+	(cd $SHELLDIR ; ls -lart)
+	action=SAVE
+	;;
+    SAVE)
+	echo "Saving config (.preinit, startup.rc, config.rc, fstab, lilo.conf, passwd)"
+	apply_config $ROOTDIR 
+	echo "Saving config ... done."
+	echo "Updating dynamic files (/etc/formilux/sig.dat, /etc/ld.so.cache) ... "
+	ldconfig -r $ROOTDIR > /dev/null 2>&1 
+	
+	for SYSTEMMAP in `echo $ROOTDIR/boot/System.map-*`; do
+	    KERNVER=${SYSTEMMAP#$ROOTDIR/boot/System.map-}
+	    chroot $ROOTDIR depmod -a -F /boot/System.map-$KERNVER $KERNVER
+	done
+	
+	echo "Signing the filesystem... (this may take a while)"
+	cd $ROOTDIR ; signfs -x `mount|grep -v ' type \(tmpfs\|ramfs\)'|grep "^/.* $ROOTDIR "| \
+	    sed "s@^.*$ROOTDIR\([^ ]*\) .*@.\1@"` > /etc/formilux/sig.dat
+	echo "Updating dynamic files ... done."
+	SHELLDIR=/
+	action=LILO
+	;;
+    LILO)
+	do_lilo
+	SHELLDIR=/
+	action=UNMOUNT
+	;;
+    UNMOUNT)
+	cd /
+	unmount_new_fs
+	umount -l /mnt/cdrom >/dev/null 2>&1
+	SHELLDIR=/
+	action=EXIT
+	;;
+    *) 
+	;;
+  esac
+done
+

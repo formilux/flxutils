@@ -1,4 +1,12 @@
 #!/bin/bash
+#
+# flxextract - package extracter - version 0.0.2 - 2003-06-16
+# This file is part of the Formilux project : http://formilux.ant-computing.com/
+#
+# Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
+#       mailto: benoit@ant-computing.com,willy@ant-computing.com
+#
+# This program is licenced under GPLv2 ( http://www.gnu.org/licenses/gpl.txt )
 
 function main {
     local file packages pack pkgsrc
@@ -103,13 +111,13 @@ fi
 
 # par défaut, ROOTDIR est fonction de la date
 DATE=$(date +%Y%m%d-%H%M%S)
-ROOTDIR=${ROOTDIR:-/tmp/package-$DATE}
+ROOTDIR=${ROOTDIR:-/tmp/package-$DATE-$$}
 #if [ -e $ROOTDIR ] ; then 
 #    echo "Error : directory $ROOTDIR already exists."
 #    exit 1 
 #fi 
 
-LOGFILE=${LOGFILE:-/tmp/package-$DATE.log}
+LOGFILE=${LOGFILE:-/tmp/package-$DATE-$$.log}
 if [ -e $LOGFILE ] ; then   
     echo "Error : log file $LOGFILE exists."
     exit 0
