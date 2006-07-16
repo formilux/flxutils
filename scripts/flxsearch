@@ -1,0 +1,266 @@
+#!/bin/bash
+
+
+# cette fonction donne le choix entre plusieurs possibiltés de source
+function choice {
+     local file=$1 ; shift
+     local -a choices=()
+     local i=1
+     local best choice
+     
+     OLDIFS=$IFS ; IFS=$'\n'
+     choices=( $( for choice in $* ; do
+         awk '{ if ($8 == "'$file'") print "'$choice'",$0 }' $choice
+     done ) )
+     IFS=$OLDIFS
+
+     echo
+     echo "Choix indéterminé pour '$file':" >&2
+     best=0
+     i=0 ; while [ $i -lt ${#choices[*]} ] ; do
+         # if [ $i == $best ] ; then echo -n " * " ;
+         # else                      echo -n "   " ;
+         # fi          
+         echo -n "   " ;
+         set -- ${choices[$i]}
+         case $2 in
+             l) type="lien vers ${10}" ;;
+!             d) type="repertoire" ;;
+             s) type="socket" ;;
+             c|b) type="device" ;;
+             *) 
+                if [ $6 -lt 100000 ]      ; then type="fichier ($[$6]o)"
+                elif [ $6 -lt 100000000 ] ; then type="fichier ($[$6/1000]Ko)"
+                else                             type="fichier ($[$6/1000000]Mo)"
+                fi
+         esac
+         echo "$[$i+1]: dans $( basename $1 .lst), $type créé le $(date -d "1/1/1970 00:00:$8" "+%Y/%m/%d %H:%M")" >&2
+         i=$[$i+1]
+     done
+     if [ ${#choices[*]} == 0 ] ; then
+         echo -n "Entrez le nom du package pour forcer une source ('.' pour arreter)" >&2
+         best=""
+     else
+         echo -n "Entrez le nom du package ou sélectionnez les numéros souhaités ('.' pour arreter): " >&2
+     fi
+     read choice ; # [ -z "$choice" ] && choice=$[$best+1]
+      
+     if [ "x$choice" = "x." ] ; then
+         SIGINT=1 ; REPLY=""
+         return
+     fi
+
+     choices=( $( for i in ${choice//,/ } ; do
+         if [ "$i" -a "x${i//[0-9]/}" == "x" ] ; then
+             echo ${choices[$[$i-1]]%% *}
+         else 
+             echo $i
+         fi
+     done ) )
+
+     REPLY="${choices[*]}"
+}
+
+# cette fonction permet de rechercher l'existance de chacun des fichiers de LFILES dans
+# les packages préparés
+function main {
+    local file
+    local packages pack
+    local -a sources
+    local pkgname matchlist
+
+    exec 3>&0
+    while read file packages; do 
+        # attention on ne traite pas pour le moment le cas des entrées multiples
+        # on commence par rechercher pour tous les fichiers quels sont les packages 
+        # source qui répondent à la demande
+
+        [ "$SIGINT" = 1 ] && echo -n \# >&2 && echo $file $packages >> $TMPDIR/OUTPUT && continue
+
+        sources=( $( IFS=,$IFS ; v=$( grep "^$file " $SOURCE | \
+                      awk '{ print $2 }' ) ; echo $v) )
+
+        # check forced packages
+        if [ ${#sources[*]} -gt 1 ] ; then
+            local -a forced=( $( for i in ${sources[*]} ; do f=${i##*/} ; f=${f%%.lst}; 
+                               [ "x${FORCED/* $f */}" == "x" ] && echo $i ; done ) )
+            [ "${#forced[*]}" -gt 0 ] && sources=( $forced[*] )
+        fi
+
+        # remove rejected package 
+        if [ ${#sources[*]} -gt 1 ] ; then
+            sources=( $( for i in ${sources[*]} ; do f=${i##*/} ; f=${f%%-*}; 
+                        [ "x${EXCEPT/* $f */}" != "x" ] && echo $i ; done ) )
+        fi
+        
+        if [ "$RECHECK" = 1 -a "$packages" ] ; then 
+            local tab=" ${sources[*]} "
+            local found=0
+
+            for pack in $packages ; do
+                [ "x${tab/* $pack */}" = "x" ] && found=1 && break
+            done
+            if [ "$found" = 0 ] ; then
+                packages=""
+            fi
+        fi
+        if [ "$packages" ] ; then    # des packages potenties de source ont été donnés
+            echo -n \# >&2 
+            REPLY=""
+        elif [ $SILENT = 0 -a ${#sources[*]} = 0 ] ; then    # le fichier n'a été trouvé dans aucun package
+            # etant la recherche
+            sources=( $( IFS=,$IFS ; v=$( grep "^[^ ]*$file " $SOURCE | awk '{ print $2 }' ) ; echo $v) )
+            if [ ${#sources[*]} -lt 20 ] ; then # trop de possibilité
+                choice $file ${sources[*]} <&3
+            else 
+                packages=""
+                REPLY=""
+            fi
+        elif [ ${#sources[*]} -gt 1 ] ; then  # le fichier a été trouvé dans plusieurs packages
+            choice $file ${sources[*]} <&3
+        else
+            echo -n \# >&2
+            REPLY=${sources}
+        fi
+        if [ "$REPLY" ] ; then
+            pkgname=$( basename $REPLY .lst ) 
+            matchlist=$pkgname,${pkgname%-*},${pkgname%-*-*},${pkgname%%-*}
+            echo $file $matchlist >> $TMPDIR/OUTPUT
+        else
+            echo $file $packages >> $TMPDIR/OUTPUT
+        fi
+    done < $LFILES
+}
+
+# repertoire contenant les .lst et les .tgz servant de source
+SEARCHPATH=$PKGROOT
+SEARCHPATH=${SEARCHPATH:-.}
+
+# temporary file and directory
+TMP=$(date +%y%m%d)-$RANDOM
+while [ -e /tmp/pg-$TMP ] ; do TMP=$(date +%y%m%d)-$RANDOM ; done
+TMPDIR=/tmp/pg-$TMP
+
+SIGINT=0
+UPDATE=0
+SILENT=0
+RECHECK=0
+PRINTUSAGE=0
+
+EXCEPT=" "
+FORCED=" "
+
+# traitement des parametres
+if [ $# -eq 0 ]; then
+    PRINTUSAGE=1
+fi
+
+while [ $# -gt 0 ] ; do
+    case "$1" in 
+        -i) # <infile> fichiers sources des autres fichiers
+            [ "$2" ] || PRINTUSAGE=1
+            INPUT="$INPUT $2"
+            shift;
+            ;; 
+        -u) # update first source file with results
+            UPDATE=1
+            ;;
+        -s) # do not tell a choice for null list of choices
+            SILENT=1
+            ;;
+        -c) # want to verify each package
+            RECHECK=1
+            ;;
+        -o) # <outfile> fichier dans lequel écrire le résultat des recherches
+            [ "$2" ] || PRINTUSAGE=1
+            OUTPUT="$2"
+            shift
+            ;;
+        -l) # <logfile> fichier de reference pour les associations fichier/package
+            [ "$2" ] || PRINTUSAGE=1
+            LOGFILE="$2"
+            shift
+            ;;
+        -U) # <package> ignore this package if not alone
+            [ "$2" ] || PRINTUSAGE=1
+            EXCEPT="$EXCEPT$2 "
+            shift
+            ;;
+        -F) # <package> force to use this package when possible
+            [ "$2" ] || PRINTUSAGE=1
+            FORCED="$FORCED$2 "
+            shift
+            ;;
+        -p) # <path> repertoire de recherche pour les packages
+            [ "$2" ] || PRINTUSAGE=1
+            SEARCHPATH="$SEARCHPATH $2"
+            shift
+            ;;
+        -h) # affiche l'aide sur les paramètres
+            PRINTUSAGE=1
+            shift
+            ;;
+    esac
+    shift
+done
+
+if [ $PRINTUSAGE -gt 0 ]; then
+    # affiche les lignes du case ci-dessus
+    echo "Usage : $0 followed by these parameters :"
+    grep '^[ 	]\+-.) #.*' $0
+    echo
+    exit 1
+fi
+
+# fabrication des fichiers temporaires
+mkdir -p -m 700 $TMPDIR
+# fichier contenant l'ensemble des fichiers disponibles et leur package source
+SOURCE=$TMPDIR/source ; touch $SOURCE
+# fichier contenant l'ensemble des fichiers requis
+LFILES=$TMPDIR/lfiles ; touch $LFILES
+# fichier contenant la correspondance non du package source du package
+# SFILES=$TMPDIR/sfiles ; touch $SFILES
+
+# fabrication d'un fichier contenant l'ensemble des fichiers disponibles avec leur package
+# source
+OLDIFS=$IFS ; IFS=$'\n'
+for path in $SEARCHPATH ; do
+    if [ -d $path ] ; then
+        for file in $( ls $path/*.lst ) ; do
+            # echo -n \# >&2
+            # pkgname=$( basename $file .lst ) 
+            # matchlist=$pkgname # ,${pkgname%-*},${pkgname%-*-*},${pkgname%%-*}
+            # attention aucun traitement d'un espace (\ ) dans le nom de fichier
+            awk '{print $8,"'$file'"}' $file >> $SOURCE
+        done
+    fi
+done
+
+IFS=$OLDIFS
+
+# fabrication d'un fichier contenant la liste de tous les fichiers recherchés
+# le fichier source peut contenir lui-même des informations de packages de provenance
+if [ "$INPUT" ] ; then
+    for file in $INPUT ; do
+        cat $file >> $LFILES
+    done
+else 
+    cat >> $LFILES
+fi
+sort -u $LFILES > $LFILES.new ; rm $LFILES ; mv $LFILES.new $LFILES
+
+main
+
+if [ -e $TMPDIR/OUTPUT ] ; then
+    if [ "$UPDATE" == 1 -a "$INPUT" ] ; then
+        set -- $INPUT
+        rm -f $1 ; mv $TMPDIR/OUTPUT $1
+    elif [ "$OUTPUT" ] ; then
+        mv $TMPDIR/OUTPUT $OUTPUT
+    else
+        cat $TMPDIR/OUTPUT
+    fi
+fi
+echo
+rm -rf $TMPDIR
+exit $SIGINT

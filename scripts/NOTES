@@ -1,0 +1,36 @@
+pkgfind permet de déterminer de quel package provient tel ou tel fichier. 
+Cet outil prend en entrée une liste de fichier avec des packages de provenance souhaités et
+des répertoires et fichier sources de fichier (.lst).
+Une première étape de résolution consiste à compléter la liste en ajoutant des packages sources 
+probables aux fichiers.
+La deuxième étape consiste à retourner une liste en indiquant le fichier et le package source (.lst)
+utilisé pour le trouver. Il peut aussi générer un fichier TGZ contenant l'ensemble des fichiers 
+mis à jour.
+
+pkgbuild -i <list>.dep [-i <list>.dep] -p <path> -r -R -n -o output.tgz
+ -i <list_file> : fichier(s) source contenant la liste des fichiers recherchés au format .dep
+ -p <path>      : répertoires contenant contenant les packages dans lesquel effectuer les recherches
+ -r : determine la source des fichiers dont aucune source n'est précisée
+ -R : redéterminer la source des fichiers (même pour ceux dont la source est précisée)
+ -n : ne créer par le fichier tgz, ecrit sur l'output la fichier résultant au format .dep
+ -o <fichier.tgz> : non de l'archive dans laquelle stocker le package résultant
+
+
+flxsearch [ -p path ] -i needed_files -o found_files
+-p path : répertoire de recherche pour les packages (.lst, .tgz)
+-l logfile : fichier mettant en relation le fichier recherché et le package de provenance
+-i need_files : liste de fichiers souhaités
+-o founded_files : liste des fichiers trouvés avec leur résolution
+
+flxextract [ -p path ] [-o archive] -i defined_files 
+-p path    : répertoire de recherche pour les packages (.lst, .tgz)
+-o output  : archive optionnelle à créer
+-R rootdir : répertoire d'installation des fichiers pour prégénération de l'archive (default /tmp/package)
+-l logfile : fichier mettant en relation le fichier recherché et le package de provenance
+
+ 
+
+
+
+
+

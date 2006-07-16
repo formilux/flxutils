@@ -1,0 +1,149 @@
+#!/bin/bash
+
+function main {
+    local file packages pack
+    exec 3>&0
+    # cette boucle permet de rechercher le package à utiliser pour trouver
+    # le fichier si cela est possible
+    while read file packages; do 
+        echo -n \# >&2
+        if [ -z "$packages" ] ; then echo "$file -" >> $SFILES ; continue ; fi
+        packagesgrep=${packages//,/\\|}
+        files=( $(grep -m 1 "^$file .*/\($packagesgrep\).*$" $SOURCE | awk '{print $2}') )
+        pkgsrc=""
+        for pack in ${packages//,/ } ; do
+            i=0; while [ $i -lt ${#files[*]} ] ; do
+                [ ${files[$i]/$pack} != ${files[$i]} ] && pkgsrc=${files[$i]} && break
+                i=$[$i+1]
+            done
+            [ "$pkgsrc" ] && break
+        done
+        if [ "$pkgsrc" ] ; then
+            echo "$file $pkgsrc" >> $SFILES
+        else
+            echo "$file -" >> $SFILES
+        fi
+    done < $LFILES
+    echo
+    for lst in $( awk '{print $2}' $SFILES | sort -u ) ; do
+        if [ "x$lst" = "x-" ] ; then continue ; fi
+        tgz="$(dirname $lst)/$(basename $lst .lst).tgz"
+        grep -- " $lst$" $SFILES | awk '{print $1}' | tar zxpvf $tgz -C $ROOTDIR -T - >> $LOGFILE
+    done
+    grep -- " -$" $SFILES | awk '{print "##unresolved##",$1}'  >> $LOGFILE
+}
+
+# repertoire contenant les .lst et les .tgz servant de source
+SEARCHPATH=$PKGROOT
+SEARCHPATH=${SEARCHPATH:-.}
+
+# temporary file and directory
+TMP=$(date +%y%m%d)-$RANDOM
+while [ -e /tmp/pg-$TMP ] ; do TMP=$(date +%y%m%d)-$RANDOM ; done
+TMPDIR=/tmp/pg-$TMP
+PRINTUSAGE=0
+
+# traitement des parametres
+if [ $# -eq 0 ]; then
+    PRINTUSAGE=1
+fi
+
+while [ $# -gt 0 ] ; do
+    case "$1" in 
+        -i) # <infile> fichiers sources des autres fichiers
+            [ "$2" ] || PRINTUSAGE=1
+            INPUT="$INPUT $2"
+            shift;
+            ;; 
+        -l) # <logfile> fichier de reference pour les associations fichier/package
+            [ "$2" ] || PRINTUSAGE=1
+            LOGFILE="$2"
+            shift
+            ;;
+        -p) # <pkgdir> repertoire de recherche pour les packages
+            [ "$2" ] || PRINTUSAGE=1
+            SEARCHPATH="$SEARCHPATH $2"
+            shift
+            ;;
+        -R) # <destdir> répertoire d'extraction pour les fichiers
+            [ "$2" ] || PRINTUSAGE=1
+            ROOTDIR="$2"
+            shift
+            ;;
+        -h) # affiche l'aide sur les paramètres
+            PRINTUSAGE=1
+            shift
+            ;;
+    esac
+    shift
+done
+
+if [ $PRINTUSAGE -gt 0 ]; then
+    # affiche les lignes du case ci-dessus
+    echo "Usage : $0 followed by these parameters :"
+    grep '^[ 	]\+-.) #.*' $0
+    echo
+    exit 1
+fi
+
+# par défaut, ROOTDIR est fonction de la date
+DATE=$(date +%Y%m%d-%H%M%S)
+ROOTDIR=${ROOTDIR:-/tmp/package-$DATE}
+if [ -e $ROOTDIR ] ; then 
+    echo "Error : directory $ROOTDIR already exists."
+    exit 1 
+fi 
+
+LOGFILE=${LOGFILE:-/tmp/package-$DATE}.log
+if [ -e $LOGFILE ] ; then   
+    echo "Error : log file $LOGFILE exists."
+    exit 0
+fi
+
+mkdir -p $ROOTDIR
+
+# fabrication des fichiers temporaires
+mkdir -p -m 700 $TMPDIR
+# fichier contenant l'ensemble des fichiers disponibles et leur package source
+SOURCE=$TMPDIR/source ; touch $SOURCE
+# fichier contenant l'ensemble des fichiers requis
+LFILES=$TMPDIR/lfiles ; touch $LFILES
+# fichier contenant la correspondance non du package source du package
+SFILES=$TMPDIR/sfiles ; touch $SFILES
+
+
+
+# fabrication d'un fichier contenant l'ensemble des fichiers disponibles avec leur package
+# source
+OLDIFS=$IFS ; IFS=$'\n'
+for path in $SEARCHPATH ; do
+    if [ -d $path ] ; then
+        for file in $( ls $path/*.lst ) ; do
+            # echo -n \# >&2
+            # pkgname=$( basename $file .lst ) 
+            # matchlist=$pkgname # ,${pkgname%-*},${pkgname%-*-*},${pkgname%%-*}
+            # attention aucun traitement d'un espace (\ ) dans le nom de fichier
+            awk '{print $8,"'$file'"}' $file >> $SOURCE
+        done
+    fi
+done
+
+IFS=$OLDIFS
+
+# fabrication d'un fichier contenant la liste de tous les fichiers recherchés
+# le fichier source peut contenir lui-même des informations de packages de provenance
+if [ "$INPUT" ] ; then
+    for file in $INPUT ; do
+        cat $file >> $LFILES
+    done
+else 
+    cat >> $LFILES
+fi
+sort -u $LFILES > $LFILES.new ; rm $LFILES ; mv $LFILES.new $LFILES
+
+main
+
+echo "Le résultat est dans $ROOTDIR, et les opérations sont dans $LOGFILE"
+
+rm -rf $TMPDIR
+
