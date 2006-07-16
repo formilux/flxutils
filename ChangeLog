@@ -67,3 +67,11 @@
  - now 'wdd' supports checks of arbitrary file lists and gets a man page.
  - lcdwrite and lcdtee sources have been brought back
 
+2004/09/25
+ - init : new 'wk' (waitkey) command.
+
+2004/10/11
+ - wdd : add support for /dev/misc/watchdog as presented by devfs
+
+2004/11/21
+ - flx : fix build with gcc-3.3

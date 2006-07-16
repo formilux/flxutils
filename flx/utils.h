@@ -56,7 +56,7 @@ typedef unsigned char   u_char;
 
 #define BUFFLEN BUFFER_LENGTH
 
-#define PFERROR(str...)    PFERROR2(##str, 0)
+#define PFERROR(str...)    PFERROR2(str, 0)
 #define PFERROR2(str, p...)  pferror("%s:%d: " str, __FILE__, __LINE__, ##p)
 #define HEXTODEC(a)  (('0'<=(a) && (a)<='9')?(a)-'0':(a)-'a'+10)
 
@@ -71,7 +71,7 @@ typedef unsigned char   u_char;
 #define POOL_ALLOC(type) ({                     \
     void *p;                                    \
     if ((p = pool_##type) == NULL)              \
-        p = malloc(sizeof(##type));              \
+        p = malloc(sizeof(type));              \
     else {                                      \
         pool_##type = *(void **)pool_##type;    \
     }                                           \
@@ -94,7 +94,7 @@ typedef unsigned char   u_char;
 #define POOL_INIT_PROTO(type) extern type *pool_##type
 
 #else
-#define POOL_ALLOC(type) (calloc(1,sizeof(##type)));
+#define POOL_ALLOC(type) (calloc(1,sizeof(type)));
 #define POOL_FREE(type, ptr) (free(ptr));
 #define POOL_INIT        
 #endif  /* MEM_OPTIM */

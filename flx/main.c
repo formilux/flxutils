@@ -36,12 +36,15 @@ char  *Progname = NULL;
 
 
 t_param FLX_poptions[] = {
-    { 0, NULL, 0xFFFF, 0, "sign -h|<options> input [...]
-                  sign data" },
-    { 0, NULL, 0xFFFF, 0, "check -h|<options>  src1 src2                
-                  check difference between src1 and src2" },
-    { 0, NULL, 0xFFFF, 0, "check -h|<options>  src1 [...] , src2 [...]  
-                  check difference between srcs1 and srcs2" },
+    { 0, NULL, 0xFFFF, 0,
+      "sign\t-h|<options> input [...]\n"
+      "\t\tsign data" },
+    { 0, NULL, 0xFFFF, 0,
+      "check\t-h|<options>  src1 src2\n"
+      "\t\tcheck difference between src1 and src2" },
+    { 0, NULL, 0xFFFF, 0,
+      "check\t-h|<options>  src1 [...] , src2 [...]\n"
+      "\t\tcheck difference between srcs1 and srcs2" },
     { 0, NULL, 0, 0}
 };
 

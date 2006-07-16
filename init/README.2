@@ -12,6 +12,9 @@ Résumé rapide des commandes les plus courantes :
   - rd : passe en mode prompt clavier, en affichant le
          message. Ne retourne jamais d'erreur. Le prompt
          compte les niveaux pour s'y retrouver avec les {} :-)
+  - wk : affiche le message (premier param) et attend au maximum le
+         second param en nombre de secondes pour l'appui sur une touche.
+         Retourne une erreur si on atteint le time-out, OK sinon.
   - mt : mount ; re : remount ; um : umount
   - mv : mount --move ; bi : mount --bind
   - ex : exécute dans un sous-process (system())

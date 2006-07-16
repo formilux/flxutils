@@ -32,6 +32,8 @@ System checks are performed in this order :
 .TP
 \- Opening of \fB/dev/watchdog\fP if it was not previously open ;
 .TP
+\- Opening of \fB/dev/misc/watchdog\fP if \fB/dev/watchdog\fP failed ;
+.TP
 \- Allocation then release of 4 kB of memory to check that the VM
 subsystem is still operating, and to give the daemon a chance to die
 under Out-of-Memory conditions (OOM) ;
@@ -64,7 +66,7 @@ accessibility of the root directory every second. Launching it with
 bombs because it soon will not get enough time slices to ping the
 driver.
 .TP
-\fBwdd / /dev/watchdog /proc/version /var/run /tmp/.
+\fBwdd / /dev/watchdog /proc/self/root /var/run /tmp/.
 .br
 Periodically checks all of these existing entries. This ensures that
 \fB/\fP is always reachable, that \fB/dev\fP has not been wiped out

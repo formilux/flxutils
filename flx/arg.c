@@ -30,7 +30,7 @@ void arg_usage(t_param *p, char *message, ...) {
     fprintf(stderr, "%s %s, %s\n", PROGRAM_NAME, PROGRAM_VERSION, COPYRIGHT);
     fprintf(stderr, "usage: %s [options] [...]\n", Progname);
     while(p && p->optnum) {
-	fprintf(stderr, "     %s\n", p->help);
+	fprintf(stderr, "\t%s\n", p->help);
 	p++;
     }
     exit(1);

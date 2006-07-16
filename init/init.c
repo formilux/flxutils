@@ -306,6 +306,7 @@ enum {
     TOK_RD,	/* rd : read a command from the console */
     TOK_RM,	/* rm : remove files */
     TOK_ST,	/* st : stat file existence */
+    TOK_WK,	/* wk : wait key */
     TOK_OB,	/* {  : begin a command block */
     TOK_CB,	/* }  : end a command block */
     TOK_DOT,	/* .  : end of config */
@@ -318,7 +319,7 @@ enum {
 };
 
 /* counts from TOK_LN to TOK_DOT */
-#define NB_TOKENS	24
+#define NB_TOKENS	25
 
 /* this contains all two-chars command, 1-char commands, followed by a token
  * number.
@@ -349,6 +350,7 @@ static const  __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     "rd",   0, 0,	/* TOK_RD */
     "rm",   0, 1,	/* TOK_RM */
     "st",   0, 1,	/* TOK_ST */
+    "wk",   0, 2,	/* TOK_WK */
     "{",  '{', 0,	/* TOK_OB */
     "}",  '}', 0,	/* TOK_CB */
     ".",  '.', 0,	/* TOK_DOT : put every command before this one */
@@ -1027,6 +1029,39 @@ static mode_t a2mode(char *ascii) {
     return m;
 }
 
+void flush_stdin() {
+    int ret;
+    fd_set in;
+    struct timeval tv;
+
+    while (1) {
+	FD_ZERO(&in);
+	FD_SET(0, &in);
+	tv.tv_sec = tv.tv_usec = 0;
+	ret = select(1, &in, NULL, NULL, &tv);
+	if (ret <= 0)
+	    break;
+	read(0, &ret, sizeof(ret));
+    }
+}
+
+/* waits <delay> seconds for a character to be entered from stdin. It returns
+ * zero if the timeout expires, otherwise it flushes stdin and returns 1
+ */    
+int keypressed(int delay) {
+    int ret;
+    fd_set in;
+    struct timeval tv;
+    FD_ZERO(&in);
+    FD_SET(0, &in);
+    tv.tv_sec = delay; tv.tv_usec=0;
+    ret = select(1, &in, NULL, NULL, &tv);
+    if (ret <= 0)
+	return 0;
+    flush_stdin();
+    return 1;
+}
+
 int main(int argc, char **argv, char **envp) {
     int old_umask;
     int pid1, err;
@@ -1119,6 +1154,7 @@ int main(int argc, char **argv, char **envp) {
 	 * can safely ignore and overwrite /dev in case of linuxrc, reason why
 	 * we don't test the presence of /dev/console.
 	 */
+#if 0
 	if (linuxrc || stat(dev_console, &statf) == -1) {
 	    print("init/info: /dev/console not found, rebuilding /dev.\n");
 	    if (mount(dev_name, dev_name, tmpfs_fs, MS_MGC_VAL, dev_options) == -1)
@@ -1150,7 +1186,7 @@ int main(int argc, char **argv, char **envp) {
 #endif
 	    return 0;
 	}
-
+#endif
 	/* if /dev/root is non-existent, we'll try to make it now */
 
 	if (stat(dev_root, &statf) == -1) {
@@ -1222,7 +1258,7 @@ int main(int argc, char **argv, char **envp) {
 		    /* don't report prompt errors to the rest of the config ! */
 		    error = 0;
 		}
-	    }
+	    } /* end of kbd */
 
 	    if (cmd_input == INPUT_FILE) {
 		token = parse_cfg(&cfg_line);
@@ -1238,7 +1274,7 @@ int main(int argc, char **argv, char **envp) {
 	    cond = token & TOK_COND;
 	    token &= ~TOK_COND;
 
-	    if (cfg_args[tokens[token].minargs] == NULL) {
+	    if (cfg_args[(int)tokens[token].minargs] == NULL) {
 		print("Missing args\n");
 	        continue;
 	    }
@@ -1356,9 +1392,12 @@ int main(int argc, char **argv, char **envp) {
 		error = context[brace_level].error;
 		continue;
 
-	    } else if (token == TOK_RD || token == TOK_EC) {
-		/* ec <string> : echo a string */
-		/* rd <string> : display message then read commands from the console instead of the file */
+	    } else if (token == TOK_RD || token == TOK_EC || token == TOK_WK) {
+		/* ec <string> : echo a string 
+		   rd <string> : display message then read commands from the console instead of the file
+		   wk <string> <delay> : display message and wait for a key for at most <delay> seconds.
+		                         returns TRUE if a key is pressed, FALSE otherwise.
+		*/
 		char *msg;
 		int len;
 
@@ -1367,6 +1406,12 @@ int main(int argc, char **argv, char **envp) {
 		    cfg_args[1][len] = '\n';
 		    write(1, cfg_args[1], len + 1);
 		}
+
+		if (token == TOK_WK) {
+		    error = !keypressed(ATOL(cfg_args[2]));
+		    goto finish_cmd;
+		}
+
 		if (token != TOK_RD)
 		    goto finish_cmd;
 
@@ -1678,7 +1723,6 @@ int main(int argc, char **argv, char **envp) {
 	    if (mount(var_dir, var_dir, tmpfs_fs, MS_MGC_VAL, NULL) == -1)
 		print("init/err: cannot mount /var.\n");
 	    else {
-		int i;
 		print("init/info: /var has been mounted.\n");
 		mkdir(var_dir, 0755);
 		mkdir(var_tmp, 01777);
