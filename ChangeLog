@@ -75,3 +75,8 @@
 
 2004/11/21
  - flx : fix build with gcc-3.3
+
+2004/12/07
+ - removed debugging defines from init which prevented it from working anymore
+   in 0.1.24
+

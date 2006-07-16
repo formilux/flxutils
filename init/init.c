@@ -1154,7 +1154,7 @@ int main(int argc, char **argv, char **envp) {
 	 * can safely ignore and overwrite /dev in case of linuxrc, reason why
 	 * we don't test the presence of /dev/console.
 	 */
-#if 0
+#ifndef I_AM_REALLY_DEBUGGING
 	if (linuxrc || stat(dev_console, &statf) == -1) {
 	    print("init/info: /dev/console not found, rebuilding /dev.\n");
 	    if (mount(dev_name, dev_name, tmpfs_fs, MS_MGC_VAL, dev_options) == -1)
