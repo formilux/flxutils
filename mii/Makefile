@@ -1,7 +1,7 @@
 OBJS=starfire-diag tulip-diag mii-diag
 include ../include/rules.make
 CC=gcc
-CFLAGS+=-momit-leaf-frame-pointer
+#CFLAGS+=-momit-leaf-frame-pointer
 
 all:	$(OBJS)
 

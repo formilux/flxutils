@@ -43,3 +43,23 @@
  - fix compilation of ifenslave
  - release 0.1.21
 
+2003/12/31
+ - updates to pkg (0.4.0) : 
+    - automatically prepare many arch-specific GCC compile options 
+    - added the '=' feature to newpkg
+    - differentiate FLXPMAKE and FLXMAKE
+    - now FLXARCH and other options are known to the script
+ - improved and packaged wdd (WatchDog Daemon)
+
+2004/01/11
+ - updates to pkg (0.4.1) : implemented do_release and do_changelog
+
+2004/01/27
+ - changed some makefiles to make use of new GCC options provided by pkg-0.4
+
+2004/02/01
+ - changed pkg (0.4.3) to use 'readlink' instead of 'file' ; newpkg now
+   differentiates between (R)eleased, (P)ackaged, and (D)evel versions.
+ - wdd now also does a 'stat("/")' which is useful in case of broken NFSROOT.
+ - a new deployment script for wdd
+

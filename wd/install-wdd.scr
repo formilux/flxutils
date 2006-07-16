@@ -1,0 +1,95 @@
+#!/bin/bash
+
+# ce script peut également être exécuté comme ceci:
+# ssh -t access@na root@remote bash < $SCRIPT
+#
+
+echo "###### checking /bin/nice ######"
+if [ ! -x /bin/nice ]; then
+     echo "ERREUR : nice absent. Fin de l'installation !"
+     exit 1
+fi
+
+echo "###### Modprobe softdog #######"
+if ! modprobe softdog soft_margin=30 nowayout=1; then
+     echo "ERREUR de chargement de softdog. Fin de l'installation !"
+     exit 1
+fi
+
+echo "###### remontage R/W #######"
+
+remountw
+
+echo "###### extraction sbin/wdd #######"
+# this block was generated with : "od -An -tx1 -vw32|tr -d ' '"
+(sed -e 's/../x\0/g' | while read; do printf "${REPLY//x/\x}"; done | tar -C / -zxUpvf -) <<EOF
+1f8b0800de741d400203ed934148146114c7bf5967dd3d986e60e1c16aa1ed54
+b1b3dbae8b8521b575296a646b2d82c45cc92652d09995a252fa9a6a9836840e
+754c2528baeca9ec12c3ae641d82e8e425ea627d834451627b10a7f7cdace2a9
+5b1ee2fd868f37efbdfff7defbbe6186ce5de88f0ee772e41f22c52429959088
+e451b589153f968c250948a4543cbe27d912e7fa544b8a8425b20e68436af760
+384c060706d4bfe9ba7397c87fc8c8a1a387054158f57da486704f1d15838935
+ba040943ce63550d1abeda6b08e1cbcf63212fefc6ee430ed606f077c1aaade6
+4f1b5f3a0ae97ba29ced9894216f94628bb424b60e2e691573afeea81b692948
+9db0f6d3bcb264b4f1122c085b65d603a517c64e1a739dd90c1b0747b7ae0762
+96bd0f5e5ff1f1b28cc22b9d168f5d5ee8db4f61e345f0d92d2f48971d6db3e2
+eb9378428198f19a4e0721aa6e5704379a6543aeb48e5604b53ecb92bcb003c0
+6ec5ab63940b949f4266b22b0dea961a50043603ed8d4f4b2f8948c8af671916
+f77a56b34f21cbbe73c98cee5ce39107e0e88e1680b277e15581a7937d236ef7
+d68abb4975e32ce4753dd82eb38f646dcb13d596300d6fe91d78c293d00aaf2d
+30fe1365d863b27698665e576022d4b5e7961da7d0bb70e66cd7db72214f1a5e
+58f3fea2d0f0dc822b36be9a5d21f378a3d9d9640e379b23616713ff18b47233
+5fff7bd628b37e3e40137de3c0f6f2bbd1b2b158acb32db8aeb162ad3de55a9f
+5d74addf7ee2da03f623d72af643d706ec31d78af61d6e1d3522b2dbdeb49369
+6816fbc04fe2334ac67b3edfd42988419f6cc6542375b48d4b88560fb754f2be
+926e5ddda12f6a81719e99df666ee1b6206e95d9f8aa403466e7fd7c3c981b6a
+99e9087c5cd9f82ccbac115a83dfb8331d09d2e950b9b8dbfeb1cce79bb019b7
+d15c6f3e3adcadf6f4e506ce93283972430caefc130241100441100441100441
+10044110044110044110044110044190f5e50f548527e700280000
+EOF
+
+echo "###### modif startup.rc #######"
+
+### startup.rc ###
+ed -s /etc/startup.rc << "EOF"
+1
+g/\/sbin\/wdd/d
+$a
+/bin/nice -n 10 /sbin/wdd
+.
+wq
+EOF
+
+echo "###### modif config.rc #######"
+
+### config.rc ###
+ed -s /etc/config.rc << "EOF"
+1
+/^\(service\|section\)[ 	]*system/
+kb
+# on supprime une éventuelle occurence de modprobe softdog
+'b+1,/^\(service\|section\|no service\|no section\)/g/^[ 	]*modprobe.*softdog/d
+# on supprime toutes les lignes vides jusqu'à la section suivante
+'b+1,/^\(service\|section\|no service\|no section\)/g/^[ 	]*$/d
+'b
+# et on recherche la dernière ligne autre qu'un commentaire avant la section suivante
+/^\(service\|section\|no service\|no section\)/
+?^[^#]?
+a
+   modprobe softdog soft_margin=30 nowayout=1
+
+.
+wq
+EOF
+
+echo "###### démarrage du watchdog ######"
+
+killall wdd
+/bin/nice -n -10 /sbin/wdd
+
+echo "###### remontage R/O #######"
+
+sync
+remountr
+
+echo "###### terminé #######"

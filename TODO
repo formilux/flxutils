@@ -1,0 +1,2 @@
+- finish "pkg release" : problems when releasing a package which is
+  already released in another arch.

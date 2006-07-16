@@ -1,6 +1,6 @@
 OBJS=mktmp
 include ../include/rules.make
-CFLAGS+=-momit-leaf-frame-pointer
+#CFLAGS+=-momit-leaf-frame-pointer
 
 %:	%.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $<
