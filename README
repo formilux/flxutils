@@ -1,6 +1,7 @@
 Warning !!!
 
-  1) this package should be compiled with the "pkg" command distributed with Formilux
+  1) this package should be compiled with the latest version of the "pkg" command distributed
+     with Formilux, which is the one located in the 'script' directory.
   2) dietlibc and sstrip are needed for most small utilities. Since they're not available
      everywhere, a pre-compiled version of these utilities is provided. To avoid unexpected
      cleanups, "pkg clean" only cleans the minimum, and you have to use "pkg distclean" to

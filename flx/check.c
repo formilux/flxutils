@@ -50,6 +50,7 @@ static POOL_INIT(t_file_diff);
 #define O_REWRITE_SRC2      17
 #define O_OUTPUT            18
 #define O_IGN_DOT           19
+#define O_IGN_DIR           20
 
 t_param flxcheck_poptions[] = {
     { 'h', "help", O_HELP, 0, 
@@ -70,6 +71,8 @@ t_param flxcheck_poptions[] = {
       "--ignore-ldate        ignore date on links" },
     { 0, "ignore-dot", O_IGN_DOT, 0,
       "--ignore-dot          do not compare '.' and '..'" },
+    { 0, "ignore-dir", O_IGN_DIR, 0,
+      "--ignore-dir          do not compare directories" },
     { 0, "show-all", O_SH_ALL, 0,
       "--show-all            show all files (same and differs)" },
     { 0, "only-new", O_SH_NEW, 0,
@@ -524,6 +527,7 @@ int   flxcheck_pfct(int opt, t_param *param, char **flag, char **argv) {
     else if (opt == O_IGN_DATE)  UNSET(Diff, DIFF_TIME);
     else if (opt == O_IGN_LINK)  UNSET(Diff, DIFF_LINK);
     else if (opt == O_IGN_LDATE) UNSET(Diff, DIFF_LDATE);
+    else if (opt == O_IGN_DIR)   UNSET(Diff, DIFF_DIR);
     else if (opt == O_SH_HR)     SET(Options, GOPT_HUMAN_READABLE);
     else if (opt == O_REWRITE_SRC1) Rewrite_Src1 = strdup(*(argv+1));
     else if (opt == O_REWRITE_SRC2) Rewrite_Src2 = strdup(*(argv+1));

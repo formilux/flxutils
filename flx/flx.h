@@ -8,7 +8,7 @@
 #include "utils.h"
 #include "md5.h"
 
-#define COPYRIGHT "Copyright 2002-2004, Benoit DOLEZ <bdolez@ant-computing.com>"
+#define COPYRIGHT "Copyright 2002-2005, Benoit DOLEZ <bdolez@ant-computing.com>"
 
 #define DUMPBASENAME     "formilux-sig.dat"
 
@@ -48,6 +48,7 @@
 #define F_LINK          0x0040
 #define F_TIME          0x0080
 #define F_LDATE         0x0100
+#define F_DIR           0x0200
 
 #define DIFF_TYPE       F_TYPE
 #define DIFF_MODE       F_MODE
@@ -58,6 +59,7 @@
 #define DIFF_LINK       F_LINK
 #define DIFF_TIME       F_TIME
 #define DIFF_LDATE      F_LDATE
+#define DIFF_DIR        F_DIR
 #define DIFF_NOTFILLED  0x8000
 
 #define DELIM_BASE    ':'

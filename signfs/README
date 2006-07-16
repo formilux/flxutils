@@ -1,0 +1,20 @@
+signfs-0.1, October, 29 2001
+Initial release
+----------------------------------------------------
+benoit@ant-computing.com
+
+INTRODUCTION
+------------
+This package is need for formilux future distrib.
+
+DESCRIPTION
+-----------
+
+REQUIREMENTS
+-------------
+
+USAGE
+-----
+signfs [filename ...]
+This command will show identity informations of any filenames or
+current directory recursively.

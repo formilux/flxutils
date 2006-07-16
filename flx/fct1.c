@@ -76,8 +76,9 @@ int  files_are_the_same(t_file_desc *f1, t_file_desc *f2, int Diff, char *path) 
 	f1->stat.st_rdev != f2->stat.st_rdev)
 	diff |= DIFF_DEV; /* minor/major differ for device files */
     if (DIFF(TIME) && f1->stat.st_mtime != f2->stat.st_mtime) {
-	if (DIFF(LDATE) || !(S_ISLNK(f1->stat.st_mode)))
-	    diff |= DIFF_TIME; /* modification times diff */
+	if (DIFF(DIR) || !S_ISDIR(f1->stat.st_mode) || !S_ISDIR(f2->stat.st_mode))
+	    if (DIFF(LDATE) || !(S_ISLNK(f1->stat.st_mode)))
+	        diff |= DIFF_TIME; /* modification times diff */
     }
     if (DIFF(LINK) && S_ISLNK(f1->stat.st_mode) && S_ISLNK(f2->stat.st_mode)) {
 	char temp[BUFFER_LENGTH];

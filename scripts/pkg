@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# pkg - Formilux package builder - version 0.5.0 - 2005-03-01
+# pkg - Formilux package builder - version 0.5.2 - 2005-03-25
 #
 # Copyright (C) 2001-2005 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
@@ -883,7 +883,7 @@ function get_perl_depend {
     local dep DEP
     local DEP_FILE=$PKGDIR/compiled/$EXACTPKG-$FLXARCH.dep
 
-    DEP=$(grep "^\(.*['{\"]\)*[ 	]*\(require\|use\) \+['\"]*[a-zA-Z][a-z:/A-Z0-9-_]*[; '\"]" $filename | \
+    DEP=$(grep "^\(.*['{\"]\)*[ 	]*\(require\|use\) \+['\"]*[a-zA-Z][a-z:/A-Z0-9_-]*[; '\"]" $filename | \
                 sed -e 's/.*\(require\|use\) \+["'\'']\?\([^'\''" };]\+\)["'\'']\?/§§\2§§/g' \
                     -e 's/§§\([^§]\+\)§§[^§]*/ \1/g' | \
                 sed 's@::@/@g')
@@ -1150,6 +1150,7 @@ function set_compiler_options {
         AS=${AS:-as}
         LD=${LD:-ld}
         AR=${AR:-ar}
+        RANLIB=${RANLIB:-ranlib}
         STRIP=${STRIP:-strip}
         OBJDUMP=${OBJDUMP:-objdump}
 
@@ -1165,6 +1166,7 @@ function set_compiler_options {
             AS=${FLXCROSS}${AS} ; AS=${FLXCROSSAS:-$AS}
             LD=${FLXCROSS}${LD} ; LD=${FLXCROSSLD:-$LD}
             AR=${FLXCROSS}${AR} ; AR=${FLXCROSSAR:-$AR}
+            RANLIB=${FLXCROSS}${RANLIB} ; RANLIB=${FLXCROSSRANLIB:-$RANLIB}
             STRIP=${FLXCROSS}${STRIP} ; STRIP=${FLXCROSSSTRIP:-$STRIP}
             OBJDUMP=${FLXCROSS}${OBJDUMP} ; OBJDUMP=${FLXCROSSOBJDUMP:-$OBJDUMP}
         fi

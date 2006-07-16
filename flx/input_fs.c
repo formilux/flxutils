@@ -35,21 +35,25 @@ static t_file_desc *complete_info_from_fs(char *path, t_file_desc *desc) {
     /* copy stat informations */
     memcpy(&desc->stat, &stat, sizeof(stat));
 
-    if (S_ISREG(stat.st_mode) && !desc->md5)     /* get md5 checksum */
-        desc->md5 = checksum_md5_from_file(path);
-    else if (S_ISLNK(stat.st_mode) && !desc->link) { 
-	/* get link and md5 associed */
-        char temp[BUFFER_LENGTH];
-        int  l;
+    if (IS(Diff, DIFF_CHECKSUM)) {
+        if (S_ISREG(stat.st_mode) && !desc->md5)     /* get md5 checksum */
+            desc->md5 = checksum_md5_from_file(path);
+        else if (S_ISLNK(stat.st_mode) && !desc->link) { 
+	    /* get link and md5 associed */
+            char temp[BUFFER_LENGTH];
+            int  l;
 
-        if ((l = readlink(path, temp, BUFFER_LENGTH)) < 0) {
-            PFERROR("readlink(%s)", path);
-        } else {
-            temp[l] = 0;
-            desc->link = strdup(temp);
-            desc->md5 = checksum_md5_from_data(temp, l);
+            if ((l = readlink(path, temp, BUFFER_LENGTH)) < 0) {
+                PFERROR("readlink(%s)", path);
+            } else {
+                temp[l] = 0;
+                desc->link = strdup(temp);
+                desc->md5 = checksum_md5_from_data(temp, l);
+            }
         }
-    }   
+    } else
+        desc->md5 = NULL;
+
     return (desc);
 }
 

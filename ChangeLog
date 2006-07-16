@@ -80,11 +80,26 @@
  - removed debugging defines from init which prevented it from working anymore
    in 0.1.24
 
-2004/12/14 : Version 0.6.9
- - fixed a bug in fct1.c where two different but valid links would
+2004/12/14
+ - flx: bumped version to 0.6.9
+ - flx: fixed a bug in fct1.c where two different but valid links would
    not be reported as different.
 
 2005/03/01 :
   - pkg 0.5.0 provides some cross-compilation variables
   - some makefiles have been modified to support cross-compilation
   - release 0.1.28
+
+2005/03/25
+  - pkg 0.5.2 fixes a small bug and provides support for RANLIB
+
+2005/03/26
+  - finally located the old signfs sources, so the binary could be replaced.
+    nobody should need it anyway, but it's more for cleanness.
+
+2005/04/09
+  - flx: added the '--ignore-dir' option to ignore differences in directories
+    size/date.
+  - flx: during a check, do not compute the md5 sums if the user asks to
+    ignore it. This makes simple diffs a lot faster.
+  - flx: bumped version to 0.7.1

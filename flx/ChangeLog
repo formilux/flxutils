@@ -1,3 +1,8 @@
+2005/04/09 : Version 0.7.1
+- added the '--ignore-dir' option to ignore differences in directories
+  size/date.
+- during a check, do not compute the md5 sums if the user asks to
+  ignore it. This makes simple diffs a lot faster.
 2004/12/14 : Version 0.6.9
 - fixed a bug in fct1.c where two different but valid links would
   not be reported as different.
