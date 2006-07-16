@@ -44,25 +44,51 @@ static inline void try_fork() {
 
 
 /*
- * This function checks if the system can access its root FS
- * In case of failure, we exit so that the watchdog device
- * notices it and can reboot.
+ * This function checks if the system can stat a given directory entry on the
+ * VFS. In case of failure, we either report the problem, or exit so that the
+ * watchdog device notices it and can reboot.
  */
-static inline void try_stat() {
+static inline int try_stat(const char *file, int do_exit) {
     void *heap;
+    int ret;
 
     heap = (void*)sbrk(NULL);
     if (brk(heap + sizeof (struct stat)))
 	exit(1);
     memset(heap, 0, sizeof (struct stat));
-    if (stat(root_str, heap) == -1)
-	exit(1);
+    ret =  stat(file, heap);
     if (brk(heap))
 	exit(1);
+
+    if (ret == -1) {
+	if (do_exit)
+	    exit(1);
+	else
+	    return 0;
+    }
+    return 1;
 }
 
-int main (void) {
+int main (int argc, char **argv) {
     int dev;
+    int curr_file;
+
+    if (argc > 1) {
+	/* we'll do a quick check on all the arguments to
+	 * ensure that they are valid at load time, and avoid
+	 * an accidental start of the watchdog which could be
+	 * a disaster in case of a file name error.
+	 */
+	for (curr_file = 1; curr_file < argc; ) {
+	    if (try_stat(argv[curr_file], 0))
+		curr_file++;
+	    else {
+		/* remove this file from the list, and make it noticeable from 'ps' */
+		*argv[curr_file] = '!';
+		argv[curr_file] = argv[--argc];
+	    }
+	}
+    }
 
     if (fork() > 0)
 	return 0;
@@ -70,6 +96,8 @@ int main (void) {
 	close(dev);
     chdir(root_str);
     setsid();
+
+    curr_file = 1; /* start with first file in the list */
     /* let's try indefinitely to open the watchdog device */
     /* note that dev is -1 now ;-) */
     while (1) {
@@ -82,7 +110,16 @@ int main (void) {
 	}
 	try_malloc();
 	try_fork();
-	try_stat();
+
+	if (argc > 1) {
+	    try_stat(argv[curr_file], 1);
+	    curr_file++;
+	    if (curr_file >= argc)
+		curr_file = 1;
+	} else {
+	    try_stat(root_str, 1);
+	}
+
 	/* avoid a fast loop */
 	sleep(1);
     }

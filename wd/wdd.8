@@ -1,0 +1,85 @@
+.TH wdd "8" "August 2004" "wdd (flxutils) 0.1.23"  "Simple Watchdog Daemon"
+.SH NAME
+wdd - Simple Watchdog Daemon
+.SH SYNOPSIS
+.B wdd [file]...
+.SH DESCRIPTION
+Wdd is a simple daemon which periodically pings the watchdog attached
+to /dev/watchdog to keep it alive, and parallely performs a series of
+system health checks to ensure everything is working correctly. If it
+detects an error, it exits so that the watchdog driver doesn't receive
+its keep-alives anymore and the system will quickly reboot. It is
+particularly targetted at remotely managed systems where accessibility
+is a prior concern.
+
+As a bonus, it's really tiny, it consumes between 12 and 20 kB of
+memory on x86.
+
+It can optionnally take a list of files in arguments. These files will
+be checked upon startup, and all those which are accessible will be
+periodically checked (one file per second) and the daemon will exit
+as soon as it cannot access any of them. This is particularly useful
+on \fB/dev\fP, \fB/var\fP, \fB/tmp\fP, \fB/proc\fP and more generally
+any remotely mounted file-system (including \fB/\fP in case of NFS
+root). As a special case, all files which are not accessible at
+startup are removed from the tests and get their first character
+rewritten with a '\fB!\fP' in the argument list, so that they become
+easily identifiable with \fBps\fP.
+
+.SH SYSTEM CHECKS
+System checks are performed in this order :
+.LP
+.TP
+\- Opening of \fB/dev/watchdog\fP if it was not previously open ;
+.TP
+\- Allocation then release of 4 kB of memory to check that the VM
+subsystem is still operating, and to give the daemon a chance to die
+under Out-of-Memory conditions (OOM) ;
+.TP
+\- Fork a child and wait for its immediate death. This ensures that the
+system still has free PIDs and some memory, can schedule, and can
+deliver signals.
+.TP
+\- File access on the next file in the argument list. Once the last one
+has been checked, the check loops back to the first one. If no
+argument was given, a test is performed on \fB/\fP to ensure that the
+VFS still works and that an eventual NFS root is still accessible.
+.TP
+\- The daemon then pauses one second before starting the checks again.
+
+.SH FILES
+.TP
+\fB/sbin/wdd\fP
+.br
+The daemon itself
+
+.SH EXAMPLES
+.LP
+.TP
+\fBnice -n 10 /sbin/wdd\fP
+.br
+Starts the daemon with a +10 renice value, and checks the
+accessibility of the root directory every second. Launching it with
+\fBnice\fP is recommended since it makes it more sensible to fork
+bombs because it soon will not get enough time slices to ping the
+driver.
+.TP
+\fBwdd / /dev/watchdog /proc/version /var/run /tmp/.
+.br
+Periodically checks all of these existing entries. This ensures that
+\fB/\fP is always reachable, that \fB/dev\fP has not been wiped out
+nor experienced a mount or unmount, that \fB/proc\fP is mounted, that
+\fB/var\fP is mounted and has not been wiped out, and that \fB/tmp\fP
+either is mounted or is a symbolic link to a valid directory. 
+
+.SH BUGS
+.LP
+.TP
+The daemon cannot renice itself, for this you need the 'nice' command.
+.TP
+There's absolutely no output, neither debug nor error.
+
+.SH SEE ALSO
+\fIDocumentation/watchdog-api.txt\fP in the Linux kernel sources.
+.SH AUTHORS
+Willy Tarreau <willy@meta-x.org>

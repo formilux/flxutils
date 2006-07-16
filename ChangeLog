@@ -63,3 +63,7 @@
  - wdd now also does a 'stat("/")' which is useful in case of broken NFSROOT.
  - a new deployment script for wdd
 
+2004/08/06
+ - now 'wdd' supports checks of arbitrary file lists and gets a man page.
+ - lcdwrite and lcdtee sources have been brought back
+
