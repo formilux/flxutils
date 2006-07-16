@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# pkg - Formilux package builder - version 0.3.16 - 2003-10-02
+# pkg - Formilux package builder - version 0.3.17 - 2003-10-12
 #
 # Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
@@ -636,7 +636,7 @@ function do_newpkg {
     fi
 
     rm -f ${LINKNAME} && mkdir -p $new_name && ln -s $new_name ${LINKNAME} && \
-	tar -C $pkg_name  --exclude='compiled/*' --exclude='released.*' --exclude='./pkg.*' \
+	tar -C $pkg_name  --exclude='./compiled/*' --exclude='./released.*' --exclude='./pkg.*' \
             --exclude='./CFLAGS' --exclude='./.dep' --exclude='./.lst' --exclude='./.tgz' \
             -cplf - . | tar -C $new_name -xf - || (rmdir $new_name ; rm -f ${LINKNAME})
     echo "A new package '$(basename $new_name)' has been created as '$new_name', based on '$(basename $pkg_name)'."
@@ -983,7 +983,7 @@ function do_pack {
 ##  ldconfig -nr . ) > /dev/null 2>&1
 
     echo -n "Updating libraries ... "
-    ldconfig -nr . lib usr/lib > /dev/null 2>&1
+    ldconfig -nr . lib usr/lib opt/*/lib > /dev/null 2>&1
     echo "done."
 
     echo -n "Updating timestamps ... "

@@ -33,3 +33,7 @@
    .tgz, .lst, and .dep ; do_config & do_compile_only done in sub-shells ;
    automatic permissions on /etc/profile.d/*. Better handling of symlinks.
  - release 0.1.19
+
+2003/10/26
+ - fixes to pkg (0.3.17)
+ - release 0.1.20
