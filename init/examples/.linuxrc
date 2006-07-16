@@ -1,0 +1,82 @@
+#!/linuxrc <
+# mem, kmem, null, zero, random, urandom, tty0, tty, console, ptmx, initctl
+# full, fd
+
+md /var 755
+md /proc 755
+md /cdrom 755
+ln var/tmp /tmp
+
+mt /proc /proc proc rw
+mt /var /var tmpfs rw mode=755
+md /var/tmp 1777
+md /var/run 755
+md /dev/pts 755
+
+bl 0600 0 0 3 0 hd[c,ab,64][I,0-16,1]
+bl 0600 0 0 22 0 hd[c,cd,64][I,0-16,1]
+bl 0600 0 0 33 0 hd[c,ef,64][I,0-16,1]
+bl 0600 0 0 8 0 sd[c,a-h,16][I,0-15,1]
+md /dev/rd 755		# DAC960 raid disks (majors 48-55)
+bl 0600 0 0 48 0 rd/c0d[i,0-31,8]
+bl 0600 0 0 48 1 rd/c0d[i,0-31,8]p[i,1-7,1]
+md /dev/ida 755		# Compaq raid disks (majors 72-79)
+bl 0600 0 0 72 0 ida/c0d[i,0-15,16]
+bl 0600 0 0 72 1 ida/c0d[i,0-15,16]p[i,1-15,1]
+md /dev/cciss 755       # Compaq CCISS raid disks (major 104)
+bl 0600 0 0 104 0 cciss/c0d[i,0-15,16]
+bl 0600 0 0 104 1 cciss/c0d[i,0-15,16]p[i,1-15,1]
+bl 0600 0 0 11 0 sr[i,0-16,1]
+ch 0600 0 0 9 0 st[i,0-15,1]
+bl 0600 0 0 9 0 md[i,0-15,1]
+bl 0600 0 0 2 0 fd0
+bl 0600 0 0 2 28 fd0u1440
+ch 0600 0 5 2 0 pty[c,p-za-f,16][h,0-f,1]
+ch 0600 0 5 3 0 tty[c,p-za-f,16][h,0-f,1]
+ch 0600 0 5 4 1 tty[i,1-12,1]
+bl 0600 0 0 7 0 loop[i,0-9,1]
+bl 0600 0 0 1 0 ram[i,0-9,1]
+ch 0600 0 5 4 64 ttyS[i,0-9,1]
+ch 0600 0 3 10 1 psaux
+bl 0400 0 0 1 250 initrd
+md /dev/input 755
+ch 0600 0 0 13 63 input/mice
+
+ln psaux /dev/mouse
+
+ec "Looking for a valid CDROM."
+ex /sbin/findcdrom
+&{
+  ec "Found! Mounting the CDROM..."
+  mt /dev/cdrom /cdrom iso9660 ro
+  &ec "Done."
+  |ec "Failed."
+}
+|{
+  ec "No CDROM found. You can try by yourself : 'ex /sbin/findcdrom'."
+  ec "Then mount it into /cdrom : 'mt /dev/cdrom /cdrom iso9660 ro'."
+  rd
+}
+  
+# we don't need all this anymore.
+um /var
+um /proc
+
+# pivot_root only works on mount points, so we'll fake
+# /cdrom by remounting /cdrom/root into it
+bi /cdrom/root /cdrom
+bi /dev /cdrom/dev
+pr /cdrom mnt/initrd
+|rd "<pr /cdrom mnt/initrd> failed !!! Try by hand..."
+
+um /mnt/initrd/dev
+um /mnt/initrd/cdrom /mnt/cdrom
+um /mnt/initrd
+
+te RDSHELL=1
+&rd "You have requested this prompt by appending RDSHELL=1 to the kernel cmd line."
+
+in /sbin/init
+
+# now we're on the root, and /dev will be unmounted on exit
+

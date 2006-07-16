@@ -158,6 +158,16 @@ wrong for now:
 #include <sys/stat.h>
 #include <linux/loop.h>
 
+#ifndef MNT_DETACH
+#define MNT_DETACH	2
+#endif
+
+#ifndef MS_MOVE
+#define MS_MOVE		8192
+#endif
+
+#define STR_SECT ".rodata"
+
 #ifdef DEBUG
 static void print(char *c) {
     char *p = c;
@@ -174,32 +184,41 @@ static void print(char *c) {
 
 typedef unsigned char uchar;
 
-extern char **environ;
 
-static const char cfg_fname[] = "/.preinit";	   /* configuration file */
-static const char tmpfs_fs[]  = "tmpfs";
-static const char dev_console[] = "dev/console";
-static const char dev_root[]  = "dev/root";
-static const char dev_name[]  = "/dev";
-static const char root_dir[]  = "/";
-static const char var_dir[]   = "/var";
-static const char var_run[]   = "/var/run";
-static const char var_tmp[]   = "/var/tmp";
-static const char proc_dir[]  = "/proc";
-static const char proc_self_fd[]   = "/proc/self/fd";
-static const char proc_cmdline[] = "/proc/cmdline";
-static const char sbin_init_sysv[] = "sbin/init-sysv";
-static const char str_rebuild[] = "rebuild";
-static const char dev_options[] = "size=0,nr_inodes=4096,mode=755";
+/* this ordering is awful but it's the most efficient regarding space wasted in
+ * long strings alignment with gcc-2.95.3 (gcc 3.2.3 doesn't try to align long
+ * strings).
+ */
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) msg_ent_console[] = "Entering command line mode : enter one command per line, end with '.'\n";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) root_dir[]  = "/";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cur_dir[]  = ".";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_name[]  = "/dev";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_dir[]   = "/var";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_fname[] = "/.preinit";	   /* configuration file */
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) msg_err_console[] = "Command ignored, input alread bound to console !\n";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_console[] = "dev/console";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str_rebuild[] = "rebuild";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_tmp[]   = "/var/tmp";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_run[]   = "/var/run";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_self_fd[]   = "/proc/self/fd";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_cmdline[] = "/proc/cmdline";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init[] = "sbin/init";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init_sysv[] = "sbin/init-sysv";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_linuxrc[] = "/.linuxrc";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str__linuxrc[] = "/linuxrc";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_options[] = "size=0,nr_inodes=4096,mode=755";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_dir[]  = "/proc";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) tmpfs_fs[]  = "tmpfs";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_root[]  = "dev/root";
 
-#define tmp_name  (var_tmp + 4) //static const char tmp_name[]  = "/tmp";
-#define proc_fs   (proc_dir+1) //static const char proc_fs[]  = "proc";
-#define fd_dir    (proc_self_fd + 11) //static const char fd_dir[]  = "fd";
 
-#define UID_ROOT	0
-#define GID_ROOT	0
-#define GID_TTY		5
-#define GID_KMEM	9
+#define tmp_name	(var_tmp + 4)		// static const char tmp_name[]  = "/tmp";
+#define proc_fs		(proc_dir+1)		// static const char proc_fs[]  = "proc";
+#define fd_dir		(proc_self_fd + 11)	// static const char fd_dir[]  = "fd";
+#define str_linuxrc	(str__linuxrc+1)	// "linuxrc"
+
+
+#define CONST_STR(x)  ({ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) ___str___[]=x; (char *)___str___; })
 
 /* used by naming rules */
 #define MAX_FIELDS	8
@@ -207,6 +226,7 @@ static const char dev_options[] = "size=0,nr_inodes=4096,mode=755";
 #define MAX_CFG_SIZE	4096
 #define	MAX_CFG_ARGS	16
 #define MAX_CMDLINE_LEN 512
+#define MAX_BRACE_LEVEL	10
 
 struct dev_varstr {
     char type;
@@ -226,30 +246,6 @@ struct dev_varstr {
     uchar scale;
 };
 
-static const struct {
-    char   name[8];
-    short  gid;
-    char   major, minor;
-    mode_t mode;	/* mode + S_IFCHR, S_IFBLK, S_IFIFO */
-} dev_nodes[] = {
-    /* console must always be at the first location */
-    { "console", GID_TTY,  5, 1, 0600 | S_IFCHR },
-    { "mem",     GID_KMEM, 1, 1, 0640 | S_IFCHR },
-    { "kmem",    GID_KMEM, 1, 2, 0640 | S_IFCHR },
-    { "null",    GID_ROOT, 1, 3, 0666 | S_IFCHR },
-    { "port",    GID_KMEM, 1, 4, 0640 | S_IFCHR },
-    { "zero",    GID_ROOT, 1, 5, 0666 | S_IFCHR },
-    { "full",    GID_ROOT, 1, 7, 0666 | S_IFCHR },
-    { "random",  GID_ROOT, 1, 8, 0644 | S_IFCHR },
-    { "urandom", GID_ROOT, 1, 9, 0644 | S_IFCHR },
-    { "tty0",    GID_TTY,  4, 0, 0600 | S_IFCHR },
-    { "tty",     GID_TTY,  5, 0, 0666 | S_IFCHR },
-    { "ptmx",    GID_TTY,  5, 2, 0666 | S_IFCHR },
-    { "initctl", GID_ROOT, 0, 0, 0600 | S_IFIFO },
-};
-
-#define NB_TOKENS	15
-
 enum {
     TOK_LN = 0,	/* ln : make a symlink */
     TOK_MD,	/* md : mkdir */
@@ -262,21 +258,31 @@ enum {
     TOK_FI,	/* fi : make a fifo */
     TOK_MA,	/* ma : set umask */
     TOK_PR,	/* pr : pivot root */
-    TOK_MV,	/* mv : move */
-    TOK_UM,	/* um : umount */
+    TOK_MV,	/* mv : move a filesystem */
+    TOK_BI,	/* bi : bind a directory */
+    TOK_UM,	/* um : umount a filesystem */
     TOK_LO,	/* lo : losetup */
     TOK_EC,	/* ec : echo */
+    TOK_TE,	/* te : test an environment variable */
+    TOK_RD,	/* rd : read a command from the console */
+    TOK_OB,	/* {  : begin a command block */
+    TOK_CB,	/* }  : end a command block */
+    TOK_DOT,	/* .  : end of config */
     TOK_UNK,	/* unknown command */
     TOK_EOF,	/* end of file */
+    TOK_COND_NEG = 0x20, /* negate the result before evaluation */
     TOK_COND_OR  = 0x40, /* conditionnal OR */
     TOK_COND_AND = 0x80, /* conditionnal AND */
-    TOK_COND     = 0xc0, /* any condition */
+    TOK_COND     = 0xE0, /* any condition */
 };
+
+/* counts from TOK_LN to TOK_DOT */
+#define NB_TOKENS	21
 
 /* this contains all two-chars command, 1-char commands, followed by a token
  * number.
  */
-static const struct {
+static const  __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     char lcmd[2]; /* long form */
     char scmd;	  /* short form */
     char minargs; /* min #args */
@@ -293,10 +299,43 @@ static const struct {
     "ma", 'U', 1,	/* TOK_MA */
     "pr", 'P', 2,	/* TOK_PR */
     "mv", 'K', 2,	/* TOK_MV */
+    "bi", 'K', 2,	/* TOK_BI */
     "um", 'O', 1,	/* TOK_UM */
     "lo", 'l', 2,	/* TOK_LO */
     "ec",   0, 0,	/* TOK_EC */
+    "te",   0, 1,	/* TOK_TE */
+    "rd",   0, 0,	/* TOK_RD */
+    "{",  '{', 0,	/* TOK_OB */
+    "}",  '}', 0,	/* TOK_CB */
+    ".",  '.', 0,	/* TOK_DOT : put every command before this one */
 };
+
+#define UID_ROOT	0
+#define GID_ROOT	0
+#define GID_TTY		5
+#define GID_KMEM	9
+
+static const __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
+    char   name[8];
+    short  gid;
+    char   major, minor;
+    mode_t mode;	/* mode + S_IFCHR, S_IFBLK, S_IFIFO */
+} dev_nodes[] =  {
+    /* console must always be at the first location */
+    { "console", GID_TTY,  5, 1, 0600 | S_IFCHR },
+    { "mem",     GID_KMEM, 1, 1, 0640 | S_IFCHR },
+    { "kmem",    GID_KMEM, 1, 2, 0640 | S_IFCHR },
+    { "null",    GID_ROOT, 1, 3, 0666 | S_IFCHR },
+    { "port",    GID_KMEM, 1, 4, 0640 | S_IFCHR },
+    { "zero",    GID_ROOT, 1, 5, 0666 | S_IFCHR },
+    { "full",    GID_ROOT, 1, 7, 0666 | S_IFCHR },
+    { "random",  GID_ROOT, 1, 8, 0644 | S_IFCHR },
+    { "urandom", GID_ROOT, 1, 9, 0644 | S_IFCHR },
+    { "tty0",    GID_TTY,  4, 0, 0600 | S_IFCHR },
+    { "tty",     GID_TTY,  5, 0, 0666 | S_IFCHR },
+    { "ptmx",    GID_TTY,  5, 2, 0666 | S_IFCHR },
+    { "initctl", GID_ROOT, 0, 0, 0600 | S_IFIFO },
+} ;
 
 static char cfg_data[MAX_CFG_SIZE];
 static char *cfg_args[MAX_CFG_ARGS];
@@ -306,6 +345,11 @@ static char *cst_str[MAX_FIELDS];
 static char *var_str[MAX_FIELDS];
 static struct dev_varstr var[MAX_FIELDS];
 static int error; /* an error has emerged from last operation */
+static int linuxrc; /* non-zero if we were called as 'linuxrc' */
+
+/* the two input modes */
+#define INPUT_FILE 0
+#define INPUT_KBD  1
 
 static unsigned long my_atoul(const char *s) {
     unsigned long res = 0;
@@ -450,23 +494,39 @@ static inline int read_cfg(char *cfg_file) {
  * TOK_EOF if nothing left. All args are copied into <cfg_args> as an array
  * of pointers.  Maximum line length is 256 chars and maximum args number is 15.
  */
-static int parse_cfg() {
+static int parse_cfg(char **cfg_data) {
     int nbargs;
     int token;
     int cond;
+    char *cfg_line = *cfg_data;
 
     memset(cfg_args, 0, sizeof(cfg_args));
     while (*cfg_line) {
 	char c, *p = cfg_line;
 
+	cond = 0;
 	/* search beginning of line */
-	while (*p == ' ' || *p == '\t' || *p == '\n' || *p == '\r')
+	do {
+	    if (*p != ' ' && *p != '\t' && *p != '\n' && *p != '\r') {
+		if (*p == '|') {
+		    cond |= TOK_COND_OR;
+		} else if (*p == '&') {
+		    cond |= TOK_COND_AND;
+		} else if (*p == '!') {
+		    cond ^= TOK_COND_NEG;
+		} else {
+		    /* catches any printable char and the final zero */
+		    break;
+		}
+	    }
 	    p++;
+	} while (1);
 
 	/* now search end of line */
 	cfg_line = p;
-	while (*cfg_line && *cfg_line != '#' && *cfg_line != '\n' && *cfg_line != '\r')
+	while (*cfg_line && *cfg_line != '#' && *cfg_line != '\n' && *cfg_line != '\r') {
 	    cfg_line++;
+	}
 
 	/* terminate the line cleanly to avoid further tests */
 	while (c = *cfg_line) {
@@ -475,37 +535,39 @@ static int parse_cfg() {
 		break;
 	}
 
+	/* update the caller's pointer once for all. */
+	*cfg_data = cfg_line;
+
 	/* skip empty lines */
 	if (!*p)
 	    continue;
-	
-	if (*p == '|') {
-	    cond = TOK_COND_OR;
-	    p++;
-	}
-	else if (*p == '&') {
-	    cond = TOK_COND_AND;
-	    p++;
-	}
-	else
-	    cond = 0;
 
 	/* fills the cfg_args[] array with the command itself, followed by all
-	 * args.
+	 * args. cfg_args[last+1]=NULL.
 	 */
 	for (nbargs = 0; *p && (nbargs < MAX_CFG_ARGS - 1); nbargs++) {
-	    int backslash = 0;
+	    int backslash = 0, quote = 0;
 	    cfg_args[nbargs] = p;
 	    do {
 		if (backslash) {
 		    backslash = 0;
+		    if (*p == 'n')
+			*p = '\n';
+		    else if (*p == 'r')
+			*p = '\r';
+		    else if (*p == 't')
+			*p = '\t';
 		    memmove(p - 1, p, cfg_line - p);
-		}
-		else {
+		} else {
 		    backslash = (*p == '\\');
-		    p++;
+		    if (*p == '"') {
+			memmove(p, p + 1, cfg_line - p - 1);
+			quote = !quote;
+		    }
+		    else
+			p++;
 		}
-	    } while (*p && (backslash || (*p != ' ' && *p != '\t')));
+	    } while (*p && (backslash || quote || (*p != ' ' && *p != '\t')));
 	    if (*p) {
 		*p = 0;
 		do p++; while (*p == ' ' || *p == '\t');
@@ -527,8 +589,10 @@ static int parse_cfg() {
     return TOK_EOF;
 }
 
-/* makes a dev entry */
+/* makes a dev entry. continues on error, but reports them. */
 static inline int mknod_chown(mode_t mode, uid_t uid, gid_t gid, uchar major, uchar minor, char *name) {
+    int error;
+
     if (mknod(name, mode, makedev(major, minor)) == -1) {
 	error = 1;
 	print("init/error : mknod("); print(name); print(") failed\n");
@@ -538,6 +602,8 @@ static inline int mknod_chown(mode_t mode, uid_t uid, gid_t gid, uchar major, uc
 	error = 1;
 	print("init/error : chown("); print(name); print(") failed\n");
     }
+
+    return error;
 }
 
 /* breaks a 3-fields, comma-separated string into 3 fields */
@@ -861,16 +927,49 @@ static mode_t a2mode(char *ascii) {
     return m;
 }
 
-int main(int argc, char **argv) {
+int main(int argc, char **argv, char **envp) {
     int old_umask;
     int pid1, err;
     int cfg_ok;
     int rebuild;
     int token;
+    int cmd_input = INPUT_FILE;
+    static char cmd_line[256]; /* one line of config from the prompt */
     struct stat statf;
     char *cmdline_arg;
     char *cfg_file;
+    int brace_level, kbd_level, run_level;
+    struct {
+	int error;
+	int cond;
+    } context[MAX_BRACE_LEVEL];
 
+    /* first, we'll check if we have been called as 'linuxrc', used only in
+       initrd. In this particular case, we ignore all arguments and use
+       /.linuxrc as a configuration file.
+    */
+
+#ifdef DEBUG
+    print("argv[0]: ");  print(argv[0]); print("\n");
+    sleep(1);
+#endif
+
+    /* if we are called as "linuxrc" or "/linuxrc", then we work a bit
+     * differently : /dev is unmounted at the end, and we proceed even if the
+     * pid is not 1.
+     *
+     * Warning: for an unknown reason (isolinux, kernel?) specifying
+     * 'init=/linuxrc' or 'init=linuxrc' on the command line doesn't work
+     * because 'init' is set in argv[0] ! But setting it by hand works,
+     * so does 'init=/.linuxrc'. Rather strange. So the best solution is
+     * to link /sbin/init to /.linuxrc so that the interpreter's name is
+     * used even if nothing is specified.
+     */
+    if (!strcmp(argv[0], str_linuxrc) || !strcmp(argv[0], str__linuxrc)) {
+	linuxrc = 1;
+	rebuild = 0;
+	pid1 = 0;
+    }
     /* check if a config file name has been given to preinit : init [ \< <cfg_file> ] [ init args ] */
     if (argc > 2 && *argv[1] == '<') {
 	cfg_file = argv[2];
@@ -879,28 +978,40 @@ int main(int argc, char **argv) {
 	argc -= 2;
     }
     else
-	cfg_file = (char *)cfg_fname;
+	cfg_file = linuxrc ? (char *)cfg_linuxrc : (char *)cfg_fname;
 
-    /* restore the correct name. Warning: in the case where init is launched       
-     * from userspace, the config file is not read again so only the hardcoded
-     * name will be used for the executable name.
-     */
-    *argv = &sbin_init_sysv;/*"sbin/init-sysv"*/;
+    if (!linuxrc) {
+	/*FIXME*/
+	/* restore the correct name. Warning: in the case where init is launched       
+	 * from userspace, the config file is not read again so only the hardcoded
+	 * name will be used for the executable name.
+	 */
+	*argv = (char *)&sbin_init_sysv; /*"sbin/init-sysv"*/;
+	/* if "rebuild" is passed as the only argument, then we'll try to rebuild a
+	 * full /dev even if not pid==1, but only if it was not already populated
+	 */
+	rebuild = (argc == 2 && streq(argv[1], str_rebuild/*"rebuild"*/));
+	pid1 = (getpid() == 1);
+    }
+    else {
+	*argv = (char *)&sbin_init; /* "sbin/init" */
+    }
+
+    if (pid1 || linuxrc) {
+	setsid();
+    }
+
     old_umask = umask(0);
-
-    /* if "rebuild" is passed as the only argument, then we'll try to rebuild a
-     * full /dev even if not pid==1, but only if it was not already populated
-     */
-    rebuild = (argc == 2 && streq(argv[1], str_rebuild/*"rebuild"*/));
-
-    pid1 = (getpid() == 1) /*|| 1*/;
     cfg_ok = (read_cfg(cfg_file) == 0);
 
     chdir(root_dir); /* be sure not to stay under /dev ! */
     /* do nothing if we're not called as the first process */
-    if (pid1 || rebuild) {
-	/* check if /dev is already populated : /dev/console should exist */
-	if (stat(dev_console, &statf) == -1) {
+    if (pid1 || linuxrc || rebuild) {
+	/* check if /dev is already populated : /dev/console should exist. We
+	 * can safely ignore and overwrite /dev in case of linuxrc, reason why
+	 * we don't test the presence of /dev/console.
+	 */
+	if (linuxrc || stat(dev_console, &statf) == -1) {
 	    print("init/info: /dev/console not found, rebuilding /dev.\n");
 	    if (mount(dev_name, dev_name, tmpfs_fs, MS_MGC_VAL, dev_options) == -1)
 		print("init/err: cannot mount /dev.\n");
@@ -923,13 +1034,13 @@ int main(int argc, char **argv) {
 		 */
 		reopen_console();
 	    }
-	}
-	else {
-	    if (!pid1) {
-		/* we don't want to rebuild anything else if pid is not 1 */
-	    	print("init/info: /dev is OK.\n");
-		return 0;
-	    }
+	} else if (!pid1) {
+	    /* we don't want to rebuild anything else if pid is not 1 */
+#ifdef DEBUG
+	    print("init/info: /dev is OK.\n");
+	    sleep(10);
+#endif
+	    return 0;
 	}
 
 	/* if /dev/root is non-existent, we'll try to make it now */
@@ -950,13 +1061,70 @@ int main(int argc, char **argv) {
 
     /* here, the cwd is still "/" */
     if (cfg_ok) {
-	while ((token = parse_cfg()) != TOK_EOF) {
-	    int cond = 0;
-	    int lasterr = error;
+	print("ready to parse file : "); print(cfg_file); print("\n");
 
+	run_level = brace_level = 0;
+	context[brace_level].error = 0;
+	context[brace_level].cond = 0;
+	
+	/* main parsing loop */
+	while (1) {
+	    int cond = 0;
+
+	    if (cmd_input == INPUT_KBD) {
+		int len;
+		char *cmd_ptr = cmd_line;
+		static char prompt[MAX_BRACE_LEVEL + 4];
+		char *p = prompt;
+		int lev1, lev2;
+
+		p += my_strlcpy(p, error ? CONST_STR("ER\n>") : CONST_STR("OK\n>"), 5);
+
+		lev1 = run_level;
+		lev2 = brace_level;
+		while (lev1) {
+		    *p++ = '>';
+		    lev1--;
+		    lev2--;
+		}
+		if (lev2) {
+		    *p++ = '{';
+		    while (lev2--)
+			*p++ = '>';
+		    *p++ = '}';
+		}
+		*p++ = ' ';
+		write(1, prompt, p-prompt);
+
+		len = read(0,  cmd_line, sizeof(cmd_line)-1);
+		if (len > 0) {
+		    cmd_line[len] = 0;
+		    token = parse_cfg(&cmd_ptr);
+		    if (token == TOK_EOF) /* empty line */
+			continue;
+		} else {
+		    token = TOK_DOT;
+		}
+
+		if (token == TOK_DOT) {
+		    cmd_input = INPUT_FILE;
+		    brace_level = kbd_level;
+		    /* if it was not right, 'rd' would not have been called : */
+		    run_level = brace_level;
+		    /* don't report prompt errors to the rest of the config ! */
+		    error = 0;
+		}
+	    }
+
+	    if (cmd_input == INPUT_FILE) {
+		token = parse_cfg(&cfg_line);
+		if (token == TOK_EOF || token == TOK_DOT)
+		    break;
+	    }
+	    
 	    if (token == TOK_UNK) {
 		print("unknown command.\n");
-		break;
+		continue;
 	    }
 
 	    cond = token & TOK_COND;
@@ -964,27 +1132,152 @@ int main(int argc, char **argv) {
 
 	    if (cfg_args[tokens[token].minargs] == NULL) {
 		print("Missing args\n");
-		break;
+	        continue;
 	    }
 
-	    /* skip conditionnal executions if unneeded */
-	    if ((cond & TOK_COND_OR) && (!lasterr) ||
-		(cond & TOK_COND_AND) && (lasterr))
-		continue;
-
 	    /* now we can reset the error */
+	    context[brace_level].error = error;
 	    error = 0;
 
-	    /* the first command set is always available */	    
-	    if (token == TOK_IN) {
-		/* I <path> : specify the path to init */
-		print("<I>nit : used config name for init\n");
-		*argv = cfg_args[1];
-		continue;
-            }
+	    if (token == TOK_CB) { /* closing brace */
+		if (cond & TOK_COND) {
+		    print("Conditions not permitted with a closing brace.\n");
+		    /* we close the brace anyway, ignoring the condition. */
+		} else if (brace_level == 0) {
+		    print("Too many closing braces.\n");
+		    error = context[brace_level].error;
+		    continue;
+		}
+		/* transmit the current error to the upper level, and restore the upper
+		 * condition to know if we had to negate the result or not.
+		 */
+		error = context[brace_level--].error;
+		cond  = context[brace_level].cond;
+		if (run_level > brace_level)
+		    run_level = brace_level;
+		goto finish_cmd;
+	    }
+	    else if (token == TOK_OB) { /* opening brace */
+		if (brace_level == MAX_BRACE_LEVEL - 1) {
+		    print("Too many brace levels.\n");
+		    error = context[brace_level].error;
+		    break;
+		}
 
-	    if (!pid1 && !rebuild) { /* other options are reserved for pid 1 only or rebuild mode */
+		/* if this block should not be executed because of a particular
+		 * condition, we'll mark the new level to be skipped, so that
+		 * other braces are correctly counted but not evaluated.
+		 */
+		if ((run_level == brace_level) &&
+		    (!(cond & TOK_COND_OR) || context[brace_level].error) &&
+		    (!(cond & TOK_COND_AND) || !context[brace_level].error)) {
+			/* save the current condition to properly handle a negation.
+			 * The error code has already been set to 0.
+			 */
+			context[brace_level++].cond = cond;
+			run_level = brace_level;
+		}
+		else {
+		    /* the braces will not be evaluated because a & or | prevents
+		     * it to do so. Since we want to be able to chain these
+		     * expressions to do if/then/else with &{}|{}, we'll propagate
+		     * the current error code and void the condition.
+		     */
+		    error = context[brace_level].error;
+		    context[brace_level++].cond = 0;
+		}
+		continue;
+	    }
+
+	    //printf("parsing intruction <%s %s...> at level %d (%d)\n", cfg_args[0], cfg_args[1], brace_level, run_level);
+	    /* skip conditionnal executions if they cannot change the error status,
+	     * as well as blocks of code excluded from the evaluation
+	     */
+	    if ((cond & TOK_COND_OR) && !context[brace_level].error ||
+		(cond & TOK_COND_AND) && context[brace_level].error ||
+		(run_level < brace_level)) {
+		error = context[brace_level].error;
+		continue;
+	    }
+
+
+	    /*
+	     * Now we begin to parse the 'real' commands. The first set is always available
+	     */
+
+	    if (token == TOK_IN) {
+		/* I | in <path> : specify the path to init.
+		 * Problem: what to do with init args ?
+		 * We could pass ours, but if init is replaced with a
+		 * shell, this one might be called with 'auto'...
+		 * So we flush them all.
+		 */
+		print("<I>nit : used config name for init\n");
+		argv[0] = cfg_args[1];
+		argv[1] = NULL;
+
+		/* in keyboard mode, specifying init stops any further parsing,
+		 * so that the rest of the config file can be skipped.
+		 */
+		if (cmd_input == INPUT_KBD)
+		    break;
+		else {
+		    /* non sense to switch error status when assigning init */
+		    error = context[brace_level].error;
+		    continue;
+		}
+		//} else if (token == TOK_EC) {
+		/* ec <string> : echo a string */
+		//int l = strlen(cfg_args[1]);
+		//cfg_args[1][l] = '\n';
+		//write(1, cfg_args[1], l + 1);
+		//goto finish_cmd;
+	    } else if (token == TOK_RD || token == TOK_EC) {
+		/* ec <string> : echo a string */
+		/* rd <string> : display message then read commands from the console instead of the file */
+		char *msg;
+		int len;
+
+		if (cfg_args[1] != NULL) {
+		    len = strlen(cfg_args[1]);
+		    cfg_args[1][len] = '\n';
+		    write(1, cfg_args[1], len + 1);
+		}
+		if (token != TOK_RD)
+		    goto finish_cmd;
+
+		if (cmd_input == INPUT_KBD) {
+		    msg = (char *)msg_err_console;
+		    len = sizeof(msg_err_console) - 1;
+		} else {
+		    msg = (char *)msg_ent_console;
+		    len = sizeof(msg_ent_console) - 1;
+		    kbd_level = brace_level;
+		}
+		error = context[brace_level].error;
+		write(1, msg, len);
+		cmd_input = INPUT_KBD;
+		continue;
+	    } else if (token == TOK_TE) {
+		/* te <var=val> : compare an environment variable to a value.
+		 * In fact, look for the exact assignment in the environment.
+		 * The result is OK if found, NOK if not.
+		 */
+		char **env = envp;
+		while (*env) {
+		    //printf("testing <%s> against <%s>\n", cfg_args[1], *env);
+		    if (!strcmp(*env, cfg_args[1]))
+			break;
+		    env++;
+		}
+		error = (*env == NULL);
+		goto finish_cmd;
+	    }
+
+	    /* other options are reserved for pid 1/linuxrc/rebuild and prompt mode */
+	    if (!pid1 && !linuxrc && !rebuild && cmd_input != INPUT_KBD) {
 		print("Command ignored since pid not 1\n");
+		error = context[brace_level].error;
 		continue;
 	    }
 
@@ -996,14 +1289,14 @@ int main(int argc, char **argv) {
 		    error = 1;
 		    print("<D>irectory : mkdir() failed\n");
 		}
-		continue;
+		goto finish_cmd;
 	    case TOK_LN:
 		/* L from to : make a symlink */
 		if (symlink(cfg_args[1], cfg_args[2]) == -1) {
 		    error = 1;
 		    print("<S>ymlink : symlink() failed\n");
 		}
-		continue;
+		goto finish_cmd;
 	    case TOK_BL:
 		/* B <mode> <uid> <gid> <major> <minor> <naming rule> : build a block device */
 	    case TOK_CH:
@@ -1011,38 +1304,33 @@ int main(int argc, char **argv) {
 		if (chdir(dev_name) == -1) {
 		    print("<B>lock_dev/<C>har_dev : cannot chdir(/dev)\n");
 		    error = 1;
-		    continue;
+		    goto finish_cmd;
 		}
 
 		multidev(a2mode(cfg_args[1]) | ((token == TOK_BL) ? S_IFBLK : S_IFCHR),
 			 (uid_t)ATOL(cfg_args[2]), (gid_t)ATOL(cfg_args[3]),
 			 ATOL(cfg_args[4]), ATOL(cfg_args[5]), cfg_args[6]);
 		chdir(root_dir);
-		continue;
+		goto finish_cmd;
 	    case TOK_FI:
 		/* F <mode> <uid> <gid> <name> : build a fifo */
 		if (chdir(dev_name) == -1) {
-		    error = 1;
 		    print("<F>ifo : cannot chdir(/dev)\n");
+		    error = 1;
+		    goto finish_cmd;
 		}
 
-		mknod_chown(a2mode(cfg_args[1]) | S_IFIFO,
-			    (uid_t)ATOL(cfg_args[2]), (gid_t)ATOL(cfg_args[3]),
-			    0, 0, cfg_args[4]);
-
+		error = mknod_chown(a2mode(cfg_args[1]) | S_IFIFO,
+				    (uid_t)ATOL(cfg_args[2]), (gid_t)ATOL(cfg_args[3]),
+				    0, 0, cfg_args[4]);
 		chdir(root_dir);
-		continue;
-	    case TOK_EC: {
-		/* ec <string> : echo a string */
-		int l = strlen(cfg_args[1]);
-		cfg_args[1][l] = '\n';
-		write(1, cfg_args[1], l + 1);
-		continue;
-	    }
+		goto finish_cmd;
 	    } /* end of switch() */
 
-	    if (!pid1) { /* other options are reserved for pid 1 only */
+	    /* other options are reserved for pid 1/linuxrc/prompt mode only */
+	    if (!pid1 && !linuxrc && cmd_input != INPUT_KBD) {
 		print("Command ignored since pid not 1\n");
+		error = context[brace_level].error;
 		continue;
 	    }
 
@@ -1096,7 +1384,7 @@ int main(int argc, char **argv) {
 		}
 		
 		mntarg = MS_RDONLY;
-		if (cfg_args[4] != NULL && streq(cfg_args[4], "rw")) {
+		if (cfg_args[4] != NULL && streq(cfg_args[4], CONST_STR("rw"))) {
 		    print("<M>ount : 'rw' flag found, mounting read/write\n");
 		    mntarg &= ~MS_RDONLY;
 		}
@@ -1131,7 +1419,7 @@ int main(int argc, char **argv) {
 		res = fork();
 		if (res == 0) {
 		    chroot(exec_dir);
-		    execve(exec_args[0], exec_args, environ);
+		    execve(exec_args[0], exec_args, envp);
 		    print("<E>xec(child) : execve() failed\n");
 		    return 1;
 		}
@@ -1140,7 +1428,7 @@ int main(int argc, char **argv) {
 		    while (wait(&error) != res)
 			print("<E>xec(parent) : signal received\n");
 		    
-		    error = !WIFEXITED(error);
+		    error = (WIFEXITED(error) > 0) ? WEXITSTATUS(error) : 1;
 		    print("<E>xec(parent) : child exited\n");
 		}
 		else {
@@ -1160,12 +1448,12 @@ int main(int argc, char **argv) {
 		    print("<P>ivot : error during chdir(new root)\n");
 		}
 
-		if (pivot_root(".", cfg_args[2]) == -1) {
+		if (pivot_root(/*CONST_STR(".")*/cur_dir, cfg_args[2]) == -1) {
 		    error = 1;
 		    print("<P>ivot : error during pivot_root()\n");
 		}
 
-		chroot(".");
+		chroot(cur_dir/*CONST_STR(".")*/);
 		if (chdir(root_dir) == -1) {
 		    error = 1;
 		    print("<P>ivot : error during chdir(/)\n");
@@ -1175,15 +1463,27 @@ int main(int argc, char **argv) {
 		reopen_console();
 		break;
 	    case TOK_MV:
-		/* K <old_dir> <new_dir> : keep directory <old_dir> after a pivot. */
+		/* K | mv <fs_dir> <new_dir> :
+		 * initially used to keep directory <old_dir> after a pivot, now used to
+		 * move a filesystem to another directory.
+		 */
+		if (mount(cfg_args[1], cfg_args[2], cfg_args[1], MS_MGC_VAL | MS_MOVE, NULL) == 0)
+		    break;
+		/* if it doesn't work, we'll try to cheat with BIND/UMOUNT */
+	    case TOK_BI:
+		/* bi <old_dir> <new_dir> : bind old_dir to new_dir, which means that directory
+		 * <new_dir> will show the same contents as <old_dir>.
+		 */
 		if (mount(cfg_args[1], cfg_args[2], cfg_args[1], MS_MGC_VAL | MS_BIND, NULL) == -1) {
 		    error = 1;
-		    print("<mv> : error during mount\n");
+		    print("<bi> : error during mount|bind\n");
 		}
-		/* fall through umount */
+		if (token == TOK_BI)
+		    break;
+		/* fall through umount if we were trying a move */
 	    case TOK_UM:
 		/* O <old_dir> : umount <old_dir> after a pivot. */
-		if (umount(cfg_args[1]) == -1) {
+		if (umount2(cfg_args[1], MNT_DETACH) == -1) {
 		    error = 1;
 		    print("<um> : error during umount\n");
 		}
@@ -1224,9 +1524,13 @@ int main(int argc, char **argv) {
 		print("unknown cmd in /.preinit\n");
 		break;
 	    }
-	} /* while (token != TOK_EOF) */
-    } else if (pid1) {
-	print("init/info : error while opening configuration file\n");
+	finish_cmd:
+	    if (cond & TOK_COND_NEG)
+		error = !error;
+	} /* while (1) */
+    } else if (pid1 && !linuxrc) {
+	print("init/info : error while opening configuration file : ");
+	print(cfg_file); print("\n");
 
 	/* /.preinit was not found. In this case, we take default actions :
 	 *   - mount /proc
@@ -1253,22 +1557,57 @@ int main(int argc, char **argv) {
 	    }
 	}
     }
+    else {
+	print("init/info : error while opening configuration file : ");
+	print(cfg_file); print("\n");
+    }
 
     if (rebuild) {
+	print("end of rebuild\n");
+#ifdef SLOW_DEBUG
+	sleep(10);
+#endif
         /* nothing more to do */
 	return 0;
     }
 
-    /* handle the lilo command line "INIT=prog" */
-    if ((cmdline_arg = find_arg("INIT")) != NULL) {
-	argv[0] = cmdline_arg;
-	argv[1] = NULL;
-    }
 
+    /* We undo all that we can to restore a clean context.
+     * In case the init has been specified by the user at the console prompt,
+     * we don't close 0/1/2 nor dismount /dev, else we wouldn't be able to do
+     * anything.
+     */
+    if (cmd_input != INPUT_KBD) {
+	if (linuxrc) {
+	    close(2); close(1); close(0);
+	    umount2(dev_name, MNT_DETACH);
+	    print("exit from linuxrc\n");
+#ifdef SLOW_DEBUG
+	    sleep(10);
+#endif
+	    /* handle the lilo command line "init2=prog" */
+	    cmdline_arg = find_arg(CONST_STR("init2"));
+	} else {
+	    /* handle the lilo command line "INIT=prog" */
+	    cmdline_arg = find_arg(CONST_STR("INIT"));
+	}
+	
+	if (cmdline_arg != NULL) {
+	    argv[0] = cmdline_arg;
+	    argv[1] = NULL;
+	}
+    }
     print("init/debug: *argv = "); print (*argv); print("\n");
     umask(old_umask);
-    err = execve(*argv, argv, environ);
+#ifdef SLOW_DEBUG
+    sleep(10);
+#endif
+    err = execve(*argv, argv, envp);
     print("init/error : last execve() failed\n");
-    sleep(200);
+
+    /* we'll get a panic there, so let some time for the user to read messages */
+    if (pid1)
+	sleep(60);
+
     return err;
 }
