@@ -497,7 +497,6 @@ function mount_new_fs {
 
     echo "/proc		/proc		proc	defaults			0 0" >> /tmp/fstab
     echo "#/dev		/dev		tmpfs	size=0,nr_inodes=4096,remount	0 0" >> /tmp/fstab
-    echo "#/var/empty	/var/empty	tmpfs	size=0,nr_inodes=1,ro,remount	0 0" >> /tmp/fstab
     echo "/dev/pts	/dev/pts	devpts	defaults			0 0" >> /tmp/fstab
     echo "/dev/cdrom	/mnt/cdrom	iso9660	defaults,noauto,ro,users,exec	0 0" >> /tmp/fstab
 
@@ -521,7 +520,7 @@ function mount_new_fs {
 	    echo "$fs	$mp		$type	defaults			1 2" >> /tmp/fstab
 	fi
     done
-
+    echo "/var/empty	/var/empty	tmpfs	size=0,nr_inodes=1,ro,mode=0500	0 0" >> /tmp/fstab
 }
 
 # unmounts all the new file-systems
