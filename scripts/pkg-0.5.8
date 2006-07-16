@@ -1,18 +1,15 @@
 #!/bin/bash
 
-# pkg - Formilux package builder - version 0.7.1 - 2005-12-17
+# pkg - Formilux package builder - version 0.5.8 - 2005-08-21
 #
 # Copyright (C) 2001-2005 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
 #
 # This program is licenced under GPLv2 ( http://www.gnu.org/licenses/gpl.txt )
 
-######## Please update this version ########
-PKG_VERSION=0.7.1
-############################################
-
 ## WARNING ##
 # This version is not compatible with pkg scripts written for pre-0.2.0 versions
+
 
 # Usage:
 #   pkg <action> [ pkg [ pkg2 ] ]
@@ -79,7 +76,6 @@ INSTNAME=".flxdisk"
 LINKNAME=".flxpkg"
 
 FIND_CMD=pkgfilefind
-CURDIR="$(pwd)"
 
 FILE_LIST=
 
@@ -89,46 +85,6 @@ EXCLUDE_LIST=( bin boot dev etc etc/opt home lib lib/modules mnt mnt/disk mnt/cd
 ###### 
 ###### here are some undertermined type functions
 ######
-
-# check that this utility's version is at least as high as the version
-# specified in $1. Returns 0 if OK, 1 if inferior.
-
-function check_pkg_version {
-  local version="$1"
-  local major minor patch
-  local mymajor myminor mypatch
-
-  major=${version%%.*}
-  minor=${version#$major.}; minor=${minor%%.*}
-  patch=${version##*.}
-
-  mymajor=${PKG_VERSION%%.*}
-  myminor=${PKG_VERSION#$mymajor.}; myminor=${myminor%%.*}
-  mypatch=${PKG_VERSION##*.}
-
-  if [ -n "$major" ]; then
-    [ "$mymajor" -gt "$major" ] && return 0
-    [ "$mymajor" -lt "$major" ] && return 1
-  else
-    return 0
-  fi
-  
-  if [ -n "$minor" ]; then
-    [ "$myminor" -gt "$minor" ] && return 0
-    [ "$myminor" -lt "$minor" ] && return 1
-  else
-    return 0
-  fi
-  
-  if [ -n "$patch" ]; then
-    [ "$mypatch" -gt "$patch" ] && return 0
-    [ "$mypatch" -lt "$patch" ] && return 1
-  else
-    return 0
-  fi
-  return 0
-}
-
 
 # find packageable files (that can't be automaticaly created) and return only
 # their relative path to the argument.
@@ -281,7 +237,6 @@ function get_next_build {
 # This function accepts a list of versionned names, and returns them sorted by
 # version number. The names must NOT contain any '|' or '~' character, or they
 # will be discarded. Names that don't have any version are also discarded.
-# Note: package names can be full path names.
 function sortnames {
     local IFS FIELD NUMERIC_VERSION ALPHA_VERSION VERSION
     local base version rest filename i t file flist
@@ -298,11 +253,10 @@ function sortnames {
     VERSION="\($NUMERIC_VERSION\|$ALPHA_VERSION\)"
 
     # make the list appear in the form 'package|version|rest|full_name'
-    list=($(echo "$*" | grep -v "|~" | sed -e "s,$VERSION,\1|," \
-		    -e "s,^$FIELD|$VERSION,\1|\2|," \
-		    -e "s,^$FIELD|$FIELD|$FIELD$,\1|\2|\3~\1\2\3," \
-		    -e "s,^[^|]*|[^|]*$,," \
-		    -e 's,^[^|]*/,,'))
+    list=($(echo "$*" | grep -v "|~" | sed -e "s/$VERSION/\1|/" \
+		    -e "s/^$FIELD|$VERSION/\1|\2|/" \
+		    -e "s/^$FIELD|$FIELD|$FIELD$/\1|\2|\3~\1\2\3/" \
+		    -e "s/^[^|]*|[^|]*$//"))
 
     # there's a risk that it doesn't complete for all the list, and that some
     # elements keep a "rest". But what can we do about it ?
@@ -518,31 +472,22 @@ function do_build {
 #   %D => use the default package
 # If several packages match a given pattern, the user is asked to select the
 # desired one.
-# The resulting package name is returned in REPLY, and the package directoryy
-# is returned in PKGDIR whenever possible.
+# The result is returned in REPLY.
 function get_name {
     local pattern pkg_name
     local radix ver build
     local -a rel_list dev_list sort_list
-    local i search_dir
+    local i
 
     REPLY=
     for pattern in $*; do
-	search_dir=
 	if [ "$pattern" = "%P" ]; then
-	    search_dir="${CURDIR%/*}" ; search_dir="/${search_dir#/}"
-	    pattern="$(basename $CURDIR)"
+	    pattern=$(basename $(pwd))
 	elif [ "$pattern" = "%L" ]; then
-	    if [ -r ".flxpkg/Version" ]; then
-		REPLY="$(cat .flxpkg/Version)"
-		REPLY="${REPLY##*/}"
-		PKGDIR="$CURDIR/.flxpkg/."
-		return
-	    elif [ -L ${LINKNAME} -a -d ${LINKNAME}/. ]; then
+	    if [ -L ${LINKNAME} -a -d ${LINKNAME}/. ]; then
 		# the link is always an EXACT name, so we return it as-is.
-		pattern="$(readlink ${LINKNAME})"
-		PKGDIR="$pattern/."
-		REPLY="${pattern##*/}"
+		pattern=$(readlink ${LINKNAME})
+		REPLY=$(basename $pattern)
 		return
 	    else
 		continue
@@ -559,18 +504,13 @@ function get_name {
 	# we loop until pkg_name is empty, which allows recursive choices.
 	while [ "$pkg_name" ]; do
 	    # now we'll try to build a list of potentially matching packages for
-	    # each pattern. A valid package needs to host 'build.cfg'. We could
-	    # also look for the 'RELEASED' entry for released packages, but there
-	    # are still a lot of old ones without this entry. We'll reduce the
-	    # original name until either we have a non-empty list or the package
-	    # name is void.
+	    # each pattern. We'll reduce the original name until either we have
+	    # a non-empty list or the package name is void.
 	    rel_list=( ); dev_list=( )
 	    while [ "$pkg_name" -a -z "$rel_list" -a -z "$dev_list" ]; do
-		#rel_list=( $(find ${search_dir:+$search_dir/} $PKGROOT/ -maxdepth 2 -type f -path ${pkg_name}/build.cfg -printf "%h\n" 2>/dev/null) )
-		#rel_list=( ${search_dir:+$CURDIR} $(find $PKGROOT/ -maxdepth 2 -type f -path ${pkg_name}/build.cfg -printf "%h\n" 2>/dev/null) )
-		rel_list=( $(find ${search_dir:+$CURDIR/} $PKGROOT/ -maxdepth 2 -type f -path "*/${pkg_name}/build.cfg" -printf "%h\n" 2>/dev/null | uniq) )
+		rel_list=( $(find $PKGROOT/ -maxdepth 1 -type d -name ${pkg_name} -printf "%f\n" 2>/dev/null) )
 		if [ "$release_only" != "1" ]; then
-		    dev_list=( $(find $DEVROOT/ -maxdepth 2 -type f -path "*/${pkg_name}/build.cfg" -printf "%h\n" 2>/dev/null) )
+		    dev_list=( $(find $DEVROOT/ -maxdepth 1 -type d -name ${pkg_name} -printf "%f\n" 2>/dev/null) )
 		fi
 		
 		if [ -z "${rel_list[*]}" -a -z "${dev_list[*]}" ]; then
@@ -604,9 +544,7 @@ function get_name {
 	    if [ ${#sort_list[*]} -eq 0 ]; then
 		continue
 	    elif [ ${#sort_list[*]} -eq 1 ]; then
-		REPLY="${sort_list[0]}"
-		PKGDIR="${REPLY/*}"
-		REPLY="${REPLY##*/}"
+		REPLY=${sort_list[0]}
 		return
 	    fi
 
@@ -615,24 +553,21 @@ function get_name {
 	    printf " %5d : - None of the following packages -\n" 0
 	    while [ $i -lt ${#sort_list[*]} ]; do
 		# we'll display an 'R' in front of released names, or a 'D' for dev.
-	        # FIXME : we risk a wrong match here (eg: flx0.1 <-> flx0.10)
 		if [ "${rel_list[*]/${sort_list[$i]}/}" != "${rel_list[*]}" ]; then
-		    printf " %5d : [R] %s\n" $[$i+1] ${sort_list[$i]##*/}
+		    printf " %5d : [R] %s\n" $[$i+1] ${sort_list[$i]}
 		else
-		    printf " %5d : [D] %s\n" $[$i+1] ${sort_list[$i]##*/}
+		    printf " %5d : [D] %s\n" $[$i+1] ${sort_list[$i]}
 		fi
 		i=$[$i+1]
 	    done
 	    echo
 
 	    while : ; do
-		echo -n "Choice [${sort_list[${#sort_list[*]}-1]##*/}]: "; read i
+		echo -n "Choice [${sort_list[${#sort_list[*]}-1]}]: "; read i
 		if [ -z "$i" ]; then
 		    # empty string, we use the last choice which is the preferred one.
 		    i=${#sort_list[*]}
-		    REPLY="${sort_list[$[$i-1]]}"
-		    PKGDIR="${REPLY/*}"
-		    REPLY="${REPLY##*/}"
+		    REPLY=${sort_list[$[$i-1]]}
 		    return
 		elif [ "${i//[0-9]/}" ]; then
 		    # not a plain integer, we'll allow to recursively re-select
@@ -647,9 +582,7 @@ function get_name {
 		    # if the user explicitly replied "0", then he wants other choices.
 		    break;
 		elif [ $i -le ${#sort_list[*]} ]; then
-		    REPLY="${sort_list[$[$i-1]]}"
-		    PKGDIR="${REPLY/*}"
-		    REPLY="${REPLY##*/}"
+		    REPLY=${sort_list[$[$i-1]]}
 		    return
 		fi
 	    done
@@ -657,8 +590,6 @@ function get_name {
 	    # if he refuses these ones.
 	done
     done
-    PKGDIR="${REPLY/*}"
-    REPLY="${REPLY##*/}"
 }
 
 # choose a package and make ${LINKNAME} point to it
@@ -704,7 +635,7 @@ function do_newpkg {
     if [ -z "$new_name" ]; then
 	# the user has not specified any version string, we'll use the directory
 	# name.
-	new_name=$(basename $CURDIR)
+	new_name=$(basename $(pwd))
     fi
 
     rel_list=( ); dev_list=( )
@@ -720,13 +651,13 @@ function do_newpkg {
     build=$(get_build_num $new_name)
     new_name=${radix:-*}-${ver:-*}
 
-    rel_list=( $(find $PKGROOT/ -maxdepth 1 -type d -name ${new_name}\* -printf "%p\n" 2>/dev/null) )
-    dev_list=( $(find $DEVROOT/ -maxdepth 1 -type d -name ${new_name}\* -printf "%p\n" 2>/dev/null) )
+    rel_list=( $(find $PKGROOT/ -maxdepth 1 -type d -name ${new_name}\* -printf "%f\n" 2>/dev/null) )
+    dev_list=( $(find $DEVROOT/ -maxdepth 1 -type d -name ${new_name}\* -printf "%f\n" 2>/dev/null) )
     sort_list=(${rel_list[*]} ${dev_list[*]})
 
     if [ "${sort_list[*]}" ]; then
 	sort_list=($(IFS=$'\n'; echo "${sort_list[*]%-${BUILDSFX}*([0-9]).+([0-9])*}" | sort -u) )
-	sort_list=( $(sortnames ${sort_list[*]##*/} | uniq) )
+	sort_list=( $(sortnames ${sort_list[*]}) )
 	if [ "${radix/*\\**/}" -a "${ver/*\\**/}" ] && \
 	    ! (IFS=$'\n';echo "${sort_list[*]}"|grep -q "^$new_name\$"); then
 	    # if the package was properly named, and not already listed, let's
@@ -740,13 +671,21 @@ function do_newpkg {
 	    local i=0
 	    echo; echo ">>> Please select the name of the package to create :";echo
 	    while [ $i -lt ${#sort_list[*]} ]; do
-	        printf " %5d : %s\n" $[$i+1] ${sort_list[$i]##*/}
+		# we'll display an 'R' in front of released names, 'P'
+		# in front of packaged ones, or a 'D' for dev.
+		if [ -e "$PKGROOT/${sort_list[$i]}/RELEASED" ]; then
+		    printf " %5d : [R] %s\n" $[$i+1] ${sort_list[$i]}
+		elif [ "${rel_list[*]/${sort_list[$i]}/}" != "${rel_list[*]}" ]; then
+		    printf " %5d : [P] %s\n" $[$i+1] ${sort_list[$i]}
+		else
+		    printf " %5d : [D] %s\n" $[$i+1] ${sort_list[$i]}
+		fi
 		i=$[$i+1]
 	    done
 
 	    echo
 	    while : ; do
-		echo -n "Choice [${sort_list[${#sort_list[*]}-1]##*/}]: "; read i
+		echo -n "Choice [${sort_list[${#sort_list[*]}-1]}]: "; read i
 		if [ -z "$i" ]; then
 		    new_name=${sort_list[${#sort_list[*]}-1]}
 		    break
@@ -765,8 +704,8 @@ function do_newpkg {
 	# we'll search for all packages starting with the same name and version
 	# in both release and dev dirs. Then we'll be able to deduce the latest
 	# build number used.
-	#sort_list=( $(find $PKGROOT/ $DEVROOT/ -maxdepth 1 -type d -name ${new_name}-${BUILDSFX}*.\* -printf "%f\n" 2>/dev/null|sort -u) )
-	sort_list=( $(find $PKGROOT/ $DEVROOT/ -maxdepth 1 -type d -name ${new_name}-${BUILDSFX}${BUILDVER}.\* -printf "%p\n" 2>/dev/null|sort -u) )
+#	sort_list=( $(find $PKGROOT/ $DEVROOT/ -maxdepth 1 -type d -name ${new_name}-${BUILDSFX}*.\* -printf "%f\n" 2>/dev/null|sort -u) )
+	sort_list=( $(find $PKGROOT/ $DEVROOT/ -maxdepth 1 -type d -name ${new_name}-${BUILDSFX}${BUILDVER}.\* -printf "%f\n" 2>/dev/null|sort -u) )
 	if [ ${#sort_list[*]} -eq 0 ]; then
 	    # this can happen with new BUILDSFX/BUILDVER
 	    new_name=${new_name}-${BUILDSFX}${BUILDVER}.1
@@ -819,7 +758,7 @@ function do_newpkg {
     rm -f ${LINKNAME} && mkdir -p $new_name && ln -s $new_name ${LINKNAME} && \
 	tar -C $pkg_name  --exclude='./compiled/*' --exclude='./RELEASED*' --exclude='./pkg.*' \
             --exclude='./CFLAGS' --exclude='./.dep' --exclude='./.lst' --exclude='./.tgz' \
-            --exclude='./Version' --one-file-system -cpf - . | tar -C $new_name -xf - || (rmdir $new_name ; rm -f ${LINKNAME})
+            -cplf - . | tar -C $new_name -xf - || (rmdir $new_name ; rm -f ${LINKNAME})
     chmod u+rw $new_name/build.cfg
 
     echo "A new package '$(basename $new_name)' has been created as '$new_name', based on '$(basename $pkg_name)'."
@@ -851,14 +790,13 @@ function do_cat {
 function do_lst {
     local FPNAME
 
-    FPNAME=$PKGDIR/compiled/${EXACTPKG##*/}-$FLXARCH
+    FPNAME=$PKGDIR/compiled/$EXACTPKG-$FLXARCH
     cat $FPNAME.lst
 }
 
 function pre_info {
-    echo "Information for package '${EXACTPKG##*/}' (\${EXACTPKG##*/}) :"
+    echo "Information for package '$EXACTPKG' :"
 
-    echo "   Package name    : $PKGRADIX (\$PKGRADIX)"
     echo "   Package version : $PKGVER (\$PKGVER)"
     echo "   Distrib version : $DISTVER (\$DISTVER)"
     echo -n "   Config. file : "
@@ -867,10 +805,10 @@ function pre_info {
     else
 	echo "none found."
     fi
-    echo "   Package file : $PKGDIR/compiled/${EXACTPKG##*/}-$FLXARCH.$PKGSUFF"
+    echo "   Package file : $PKGDIR/compiled/$EXACTPKG-$FLXARCH.$PKGSUFF"
     echo -n "   Package size : "
-    if [ -e $PKGDIR/compiled/${EXACTPKG##*/}-$FLXARCH.$PKGSUFF ]; then
-	echo "$(du -b $PKGDIR/compiled/${EXACTPKG##*/}-$FLXARCH.$PKGSUFF |cut -f1) bytes."
+    if [ -e $PKGDIR/compiled/$EXACTPKG-$FLXARCH.$PKGSUFF ]; then
+	echo "$(du -b $PKGDIR/compiled/$EXACTPKG-$FLXARCH.$PKGSUFF |cut -f1) bytes."
     else
 	echo "does not exist yet."
     fi
@@ -924,10 +862,10 @@ function pre_prepack {
     fi
     # WARNING! here, we don't use $ROOTDIR because we don't want to risk
     # erasing a wrong directory as root !
-    [ -d "$(pwd)/${INSTNAME}" ] && rm -rf "$(pwd)/${INSTNAME}"
+    [ -d $(pwd)/${INSTNAME} ] && rm -rf $(pwd)/${INSTNAME}
     # permissions are important here because we don't want to get an
     # inherited setgid or something alike on the root dir
-    [ ! -d "$ROOTDIR" ] && { mkdir -p $ROOTDIR; chown 0:0 $ROOTDIR; chmod 0755 $ROOTDIR; }
+    [ ! -d "$ROOTDIR" ] && { mkdir -p $ROOTDIR; chmod 0755 $ROOTDIR; }
     #mkdir -p "$EXAMPLEDIR"
     return 0
 }
@@ -955,7 +893,7 @@ function build_opt {
 function do_delpack {
     # WARNING! here, we don't use $ROOTDIR because we don't want to risk
     # erasing a wrong directory as root !
-    [ -d "$(pwd)/${INSTNAME}" ] && rm -rf "$(pwd)/${INSTNAME}"
+    [ -d $(pwd)/${INSTNAME} ] && rm -rf $(pwd)/${INSTNAME}
     return 0
 }
 
@@ -1016,7 +954,7 @@ function do_unpatch {
 
 # extracts a binary package into $ROOTDIR, to reflect the state prior to pack().
 function do_unpack {
-    local FILE=$PKGDIR/compiled/${EXACTPKG##*/}-$FLXARCH.$PKGSUFF
+    local FILE=$PKGDIR/compiled/$EXACTPKG-$FLXARCH.$PKGSUFF
     mkdir -p $ROOTDIR
     cd $ROOTDIR
 
@@ -1053,7 +991,7 @@ function pre_pack {
 function get_perl_depend {
     local filename=$1
     local dep DEP
-    local DEP_FILE=$PKGDIR/compiled/${EXACTPKG##*/}-$FLXARCH.dep
+    local DEP_FILE=$PKGDIR/compiled/$EXACTPKG-$FLXARCH.dep
 
     DEP=$(grep "^\(.*['{\"]\)*[ 	]*\(require\|use\) \+['\"]*[a-zA-Z][a-z:/A-Z0-9_-]*[; '\"]" $filename | \
                 sed -e 's/.*\(require\|use\) \+["'\'']\?\([^'\''" };]\+\)["'\'']\?/§§\2§§/g' \
@@ -1085,7 +1023,7 @@ function _do_pack_files {
     echo "done."
 
     # full path name of different files
-    FPNAME=$PKGDIR/compiled/${EXACTPKG##*/}-$FLXARCH
+    FPNAME=$PKGDIR/compiled/$EXACTPKG-$FLXARCH
     DEP_FILE=$FPNAME.dep
 
     rm -rf $DEP_FILE
@@ -1107,7 +1045,7 @@ function _do_pack_files {
 	    bin/*|sbin/*|lib/*|*/sbin/*|*/bin/*|*/lib/*|*/libexec/*)
 		flr="$(file $REPLY)"
 		case "$flr" in
-		    *\ script\ *)
+		    *\ shell\ *)
 			echo "$REPLY $(head -1 $REPLY| sed -e 's/^#\! *\([^ ]\+\).*/\1/') \$SHELL">>$DEP_FILE
 			;;
 		    *perl\ commands*)
@@ -1149,7 +1087,7 @@ function _do_pack_files {
     # create shortcuts ".*" for tgz, dep and lst files
     for ext in dep lst tgz; do
         rm -f $PKGDIR/.$ext
-        ln -sf compiled/${EXACTPKG##*/}-$FLXARCH.$ext $PKGDIR/.$ext
+        ln -sf compiled/$EXACTPKG-$FLXARCH.$ext $PKGDIR/.$ext
     done
     echo "done."
     return 0
@@ -1168,7 +1106,7 @@ function do_pack {
 	if [ -z "${file##/*}" ]; then
 	    FILE_LISTS="$FILE_LISTS $file"
 	else
-	    FILE_LISTS="$FILE_LISTS $CURDIR/$file"
+	    FILE_LISTS="$FILE_LISTS $(pwd)/$file"
 	fi
     done
     # FIXME: is this normal ???
@@ -1197,7 +1135,7 @@ function do_pack {
     echo "done."
 
     # full path name of different files
-    FPNAME=$PKGDIR/compiled/${EXACTPKG##*/}-$FLXARCH
+    FPNAME=$PKGDIR/compiled/$EXACTPKG-$FLXARCH
     DEP_FILE=$FPNAME.dep
 
     # rebuild dependencies file, first is a diff file
@@ -1255,7 +1193,7 @@ function do_pack {
 	    bin/*|sbin/*|lib/*|*/sbin/*|*/bin/*|*/lib/*|*/libexec/*)
 		flr="$(file $REPLY)"
 		case "$flr" in
-		    *\ script\ *)
+		    *\ shell\ *)
 			echo "$REPLY $(head -1 $REPLY| sed -e 's/^#\! *\([^ ]\+\).*/\1/') \$SHELL">>$DEP_FILE
 			;;
 		    *perl\ commands*)
@@ -1290,7 +1228,7 @@ function do_pack {
     # create shortcuts ".*" for tgz, dep and lst files
     for ext in dep lst tgz; do
         rm -f $PKGDIR/.$ext
-        ln -sf compiled/${EXACTPKG##*/}-$FLXARCH.$ext $PKGDIR/.$ext
+        ln -sf compiled/$EXACTPKG-$FLXARCH.$ext $PKGDIR/.$ext
     done
     echo "done."
     return 0
@@ -1527,7 +1465,6 @@ function usage {
     set_cross_environment
     set_compiler_options
 
-    echo "PKG version $PKG_VERSION - Formilux package build utility."
     echo "Usage:"
     echo "  pkg [-options]* <action> [ pkg [ pkg2 ] ]"
     echo
@@ -1617,11 +1554,11 @@ function do_release {
     fi
 
     # first, the destination directory must not exist
-    if [ -d "$PKGROOT/${EXACTPKG##*/}" ]; then
-	if [ -e "$PKGROOT/${EXACTPKG##*/}/RELEASED" ]; then
+    if [ -d "$PKGROOT/$EXACTPKG" ]; then
+	if [ -e "$PKGROOT/$EXACTPKG/RELEASED" ]; then
 	    echo "Error: This package already exists."
 	else
-	    echo "Error: The package directory $PKGROOT/${EXACTPKG##*/} already exists."
+	    echo "Error: The package directory $PKGROOT/$EXACTPKG already exists."
 	fi
 	exit 1
     fi
@@ -1633,11 +1570,11 @@ function do_release {
 	last_pkg=${last_pkg##*released }
     fi
 
-    if [ "$last_pkg" != "${EXACTPKG##*/}" ]; then
+    if [ "$last_pkg" != "$EXACTPKG" ]; then
 	# Let's create a new changelog entry
 	touch $PKGDIR/ChangeLog	# avoid error message in case it doesn't exist
 	(echo '0a'; date +"%Y/%m/%d %H:%M  $LOGNAME@$HOSTNAME";
-	 echo ''; echo $'\t'"* released ${EXACTPKG##*/}";
+	 echo ''; echo $'\t'"* released $EXACTPKG";
 	 echo ''; echo '.' ; echo '1,$wq') | ed $PKGDIR/ChangeLog >/dev/null
     fi
 
@@ -1652,70 +1589,14 @@ function do_release {
 	echo "Error: cannot move the package to the released directory. Cancelling."
 	# the mv here fails atomically, so nothing's lost in PKGDIR, but we have
 	# to clean a possible partial copy
-	rm -rf $PKGROOT/${EXACTPKG##*/}
+	rm -rf $PKGROOT/$EXACTPKG
 	exit 2
     fi
 
-    touch $PKGROOT/${EXACTPKG##*/}/RELEASED
+    touch $PKGROOT/$EXACTPKG/RELEASED
 
     return 0
 }
-
-# usage: install-files <owner> <perm> <dest> file...
-#
-function install-files {
-  local owner="$1" ; shift
-  local perm="$1" ; shift
-  local dst="$1" ; shift
-  local file
-
-  [ -n "${dst##*/*}" -o -d "$ROOTDIR/${dst%/*}" ] || mkdir -p "$ROOTDIR/${dst%/*}"
-  cp -dpfP "$@" "$ROOTDIR/$dst/" && \
-    ( cd "$ROOTDIR/$dst" && chown -h $owner "${@##*/}" && chmod $perm "${@##*/}" )
-
-  [ -n "$FILE_LIST" ] && for file in "$@"; do echo "$dst/$file $owner $perm"; done  >> $FILE_LIST
-}
-
-# usage: install-file <owner> <perm> <file> <dest>
-#
-function install-file {
-  local owner="$1" ; shift
-  local perm="$1" ; shift
-  local src="$1" ; shift
-  local dst="$1" ; shift
-
-  [ -n "${dst##*/*}" -o -d "$ROOTDIR/${dst%/*}" ] || mkdir -p "$ROOTDIR/${dst%/*}"
-  if cp -dpfP "$src" "$ROOTDIR/$dst" && chown -h $owner "$ROOTDIR/$dst" \
-    && [ ! -L "$ROOTDIR/$dst" ]; then chmod $perm "$ROOTDIR/$dst"; fi
-
-  [ -n "$FILE_LIST" ] && echo $dst $owner $perm >> $FILE_LIST
-}
-
-# usage: install-dir <owner> <perm> <dir>...
-#
-function install-dir {
-  local owner="$1" ; shift
-  local perm="$1" ; shift
-  local dst
-
-  for dst in "$@"; do
-    mkdir -pm $perm "$ROOTDIR/$dst" && chown -h $owner "$ROOTDIR/$dst"
-    [ -n "$FILE_LIST" ] && echo $dst $owner $perm >> $FILE_LIST
-  done
-}
-
-# usage: install-ln <owner> <target> <dest>
-#
-function install-ln {
-  local owner="$1" ; shift
-  local target="$1" ; shift
-  local dst="$1" ; shift
-
-  [ -n "${dst##*/*}" -o -d "$ROOTDIR/${dst%/*}" ] || mkdir -p "$ROOTDIR/${dst%/*}"
-  ln -s "$target" "$ROOTDIR/$dst" && chown -h $owner "$ROOTDIR/$dst"
-  [ -n "$FILE_LIST" ] && echo $dst $owner 000 >> $FILE_LIST
-}
-
 
 ######
 ###### here are some functions used only from main
@@ -1808,57 +1689,34 @@ while [ $CHAINCMD -gt 0 -a ${#ARGLIST[@]} -gt 0 ]; do
 	    CHAINCMD=0
 	    KNOWNCMD=1
 	    get_name ${ARGLIST[0]} %L %P %D
+	    PKGDIR=$(readlink ${LINKNAME} 2>/dev/null)
 	    [ -d "$PKGDIR" ] || PKGDIR=
 	    ;;
 	patch|unpatch)
 	    CHAINCMD=0
 	    KNOWNCMD=1
-	    if [ -r ".flxpkg/Version" ]; then
-		REPLY="$(cat .flxpkg/Version)"
-		REPLY="${REPLY##*/}"
-		PKGDIR="$CURDIR/.flxpkg/."
-	    else
-		REPLY="$(basename $(readlink ${LINKNAME}) 2>/dev/null)"
-		PKGDIR="$(readlink ${LINKNAME} 2>/dev/null)"
-	    fi
+	    REPLY=$(basename $(readlink ${LINKNAME}) 2>/dev/null)
+	    PKGDIR=$(readlink ${LINKNAME} 2>/dev/null)
 	    # get_name %L
 	    ;;
 	compile_only|config|config_only|compile|build)
 	    KNOWNCMD=1
-	    if [ -r ".flxpkg/Version" ]; then
-		REPLY="$(cat .flxpkg/Version)"
-		REPLY="${REPLY##*/}"
-		PKGDIR="$CURDIR/.flxpkg/."
-	    else
-		REPLY="$(basename $(readlink ${LINKNAME}) 2>/dev/null)"
-		PKGDIR="$(readlink ${LINKNAME} 2>/dev/null)"
-	    fi
+	    REPLY=$(basename $(readlink ${LINKNAME}) 2>/dev/null)
+	    PKGDIR=$(readlink ${LINKNAME} 2>/dev/null)
 	    TESTGCC=1
 	    # get_name %L
 	    ;;
 	prepack|strip|pack|delpack|release|clean)
 	    KNOWNCMD=1
-	    if [ -r ".flxpkg/Version" ]; then
-		REPLY="$(cat .flxpkg/Version)"
-		REPLY="${REPLY##*/}"
-		PKGDIR="$CURDIR/.flxpkg/."
-	    else
-		REPLY="$(basename $(readlink ${LINKNAME}) 2>/dev/null)"
-		PKGDIR="$(readlink ${LINKNAME} 2>/dev/null)"
-	    fi
+	    REPLY=$(basename $(readlink ${LINKNAME}) 2>/dev/null)
+	    PKGDIR=$(readlink ${LINKNAME} 2>/dev/null)
 	    # get_name %L
 	    ;;
 	*)
 	    CHAINCMD=0
 	    KNOWNCMD=0
-	    if [ -r ".flxpkg/Version" ]; then
-		REPLY="$(cat .flxpkg/Version)"
-		REPLY="${REPLY##*/}"
-		PKGDIR="$CURDIR/.flxpkg/."
-	    else
-		REPLY="$(basename $(readlink ${LINKNAME}) 2>/dev/null)"
-		PKGDIR="$(readlink ${LINKNAME} 2>/dev/null)"
-	    fi
+	    REPLY=$(basename $(readlink ${LINKNAME}) 2>/dev/null)
+	    PKGDIR=$(readlink ${LINKNAME} 2>/dev/null)
 	    # get_name %L
 	    ;;
     esac
@@ -1871,25 +1729,25 @@ while [ $CHAINCMD -gt 0 -a ${#ARGLIST[@]} -gt 0 ]; do
 	    echo "Error: package name not found."
 	    exit 1
 	fi
-	EXACTPKG="$PKGDIR/$REPLY"
+	EXACTPKG=$REPLY
 
 	if [ -z "$PKGDIR" ]; then
-	    if [ -e "$PKGROOT/${EXACTPKG##*/}/build.cfg" ]; then
-		PKGDIR="$PKGROOT/${EXACTPKG##*/}"
+	    if [ -e "$PKGROOT/$EXACTPKG/build.cfg" ]; then
+		PKGDIR=$PKGROOT/$EXACTPKG
 	    else
-		PKGDIR="$DEVROOT/${EXACTPKG##*/}"
+		PKGDIR=$DEVROOT/$EXACTPKG
 	    fi
 	fi
-	CFGFILE="$PKGDIR/build.cfg"
-	PKGRADIX="$(get_pkg_radix ${EXACTPKG##*/})"
-	PKGVER="$(get_pkg_ver ${EXACTPKG##*/})"
-	DISTVER="$(get_build_num ${EXACTPKG##*/})"
-	ROOTDIR="${ROOTDIR:-$CURDIR/${INSTNAME}}"
-        EXAMPLEDIR="${ROOTDIR}/usr/share/examples"
+	CFGFILE=$PKGDIR/build.cfg
+	PKGRADIX=$(get_pkg_radix $EXACTPKG)
+	PKGVER=$(get_pkg_ver $EXACTPKG)
+	DISTVER=$(get_build_num $EXACTPKG)
+	ROOTDIR=${ROOTDIR:-$(pwd)/${INSTNAME}}
+        EXAMPLEDIR=${ROOTDIR}/usr/share/examples
 
 	# for compatibility with old functions. Not used anywhere outside this script.
-	packver="${EXACTPKG##*/}"
-	pack="$PKGRADIX"
+	packver=$EXACTPKG
+	pack=$PKGRADIX
     fi
 
     set_cross_environment
@@ -1900,8 +1758,8 @@ while [ $CHAINCMD -gt 0 -a ${#ARGLIST[@]} -gt 0 ]; do
     fi
 
     # FLXMAKE is used for sequential make and FLXPMAKE for parallel make
-    FLXMAKE="${FLXMAKE:-make}"
-    FLXPMAKE="${FLXPMAKE:-$FLXMAKE}"
+    FLXMAKE=${FLXMAKE:-make}
+    FLXPMAKE=${FLXPMAKE:-$FLXMAKE}
 
     export DISTVER PKGRADIX PKGVER FLXMAKE FLXPMAKE PATCH_LIST FILE_LIST
 
@@ -1922,4 +1780,416 @@ done
 
 [ $CHAINCMD -gt 0 ] && (echo "===> PKG: [END] <===";echo) >&2
 exit 0
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+exit 99
+
+###############################################################################################################
+###############################################################################################################
+###############################################################################################################
+###############################################################################################################
+
+
+DEAD CODE BELOW !!!
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function usage {
+    echo "Usage: pkg <action> [new_pkg [old_pkg]]"
+    echo " action is one of :"
+    echo "   help    : display this help."
+    echo "   info    : get information on current package."
+    echo "   newpkg  : build a more recent .pkg script from an old one."
+    echo "   cat     : display last .pkg file."
+    echo "   edit    : edit last .pkg file."
+    echo "   patch   : apply a list of patches to the directory prior to compile."
+    echo "   unpatch : revert a list of patches to the directory."
+    echo "   compile : do_compile=do_config_only+do_compile_only in .pkg script ($CFGROOT/$CFGDIR)"
+    echo "   prepack : execute do_prepack in .pkg script ($CFGROOT/$CFGDIR)"
+    echo "   strip   : strip binaries in temporary directory"
+    echo "   pack    : strip binaries, then package into $PKGROOT"
+    echo "   delpack : remove temporary directory"
+    echo "   clean   : execute 'make clean' and remove temporary directory."
+    echo "   build   : execute clean compile prepack pack."
+    echo "   unpack  : extract package into temporary directory"
+    echo "Variables are :"
+    echo "CFGROOT    : directory for .pkg and patches, <$CFGROOT>"
+    echo "CFGFILE    : force to use of a .pkg, <$CFGFILE>"
+    echo "PKGROOT    : directory for .lst, .tgz and .dep, <$PKGROOT>"
+    echo "ROOTDIR    : base directory for package (not source), <$ROOTDIR>"
+    echo "EXAMPLEDIR : base directory for sample config , <$EXAMPLEDIR>"
+    echo "FLXARCH    : architecture for package name, <$FLXARCH>"
+    echo "KERNDIR    : base directory for package (not source), <$KERNDIR>"
+    echo "DISTVER    : build version (flx.1)"
+    exit 1
+}
+
+
+
+
+
+
+
+
+
+for ACTION in ${ARGLIST[*]}; do
+
+# now we will try to identify two packages names :
+#   - the EXACT one, deduced from command line, then version symlink, then the
+#     directory name ; this one doesn't have to exist to be correct.
+#   - the NEAREST one, deduced from the same criterions, with and without
+#     versions, and based on EXISTING files only.
+# The NEAREST one will be used as a source, while the EXACT one will be used as
+# a target. When the EXACT one exists, the NEAREST one must obviously be the
+# same.
+
+# EXACTPKG can be specified as an environment variable if needed
+[ $NEAREST_IS_SRC -eq 0 ] && [ -z "$EXACTPKG" -a ${#ARGLIST[*]} -gt 0 ] && EXACTPKG=$(basename ${ARGLIST[0]})
+[ -z "$EXACTPKG" -a -L .flxver ] && EXACTPKG=$(readlink .flxver)
+[ -z "$EXACTPKG" ] && EXACTPKG=$(basename $(pwd))
+
+if [ -z "$(get_pkg_ver $EXACTPKG)" ]; then
+    TEMP=$(sortnames $CFGROOT/$EXACTPKG-[0-9]* | tail -1)
+    TEMP=${TEMP:-$(sortnames $CFGROOT/$EXACTPKG.* | tail -1)}
+    TEMP=${TEMP:-$(sortnames $CFGROOT/$EXACTPKG-* | tail -1)}
+    TEMP=${TEMP:-$(sortnames $CFGROOT/$EXACTPKG* | tail -1)}
+#    if [ -z "$TEMP" ]; then
+#	echo "Cannot find a suitable package for the current directory. Please specify"
+#	echo "a correct name on the command line."
+#	usage
+#	exit 1
+#    fi
+    [ "$TEMP" ] && EXACTPKG=$(basename $TEMP)
+    [ -z "$(get_pkg_ver $EXACTPKG)" ] && EXACTPKG=$EXACTPKG-0
+fi
+
+if [ -z "$(get_build_num $EXACTPKG)" ]; then
+    RADIX=$(get_pkg_radix $EXACTPKG)
+    TEMP=$(sortnames $CFGROOT/$EXACTPKG-* $CFGROOT/$EXACTPKG $CFGROOT/$RADIX | tail -1)
+
+    VER=$(get_pkg_ver $TEMP)
+    BUILD=$(get_build_num $TEMP)
+    EXACTPKG=${RADIX}-${VER:-0}-${BUILD:-flx.1}
+fi
+
+NEWPKGRADIX=$(get_pkg_radix $EXACTPKG)
+NEWPKGVER=$(get_pkg_ver $EXACTPKG)
+NEWDISTVER=$(get_build_num $EXACTPKG)
+NEWDISTVER=${NEWDISTVER:-flx.1}
+EXACTPKG=$NEWPKGRADIX-$NEWPKGVER-$NEWDISTVER
+
+trylist=( )
+[ -d "$CFGROOT/$EXACTPKG" -o -f "$CFGROOT/$EXACTPKG.$PKGSUFF" ] && trylist=( ${trylist[*]} $EXACTPKG)
+[ ${#ARGLIST[*]} -gt 0 ] && trylist=( ${trylist[*]} $(basename ${ARGLIST[0]}))
+[ -L .flxver ] && trylist=( ${trylist[*]} $(readlink .flxver))
+trylist=( ${trylist[*]} $NEWPKGRADIX-$NEWPKGVER )
+trylist=( ${trylist[*]} $NEWPKGRADIX )
+trylist=( ${trylist[*]} $(basename $(pwd)))
+trylist=( ${trylist[*]} "default")
+
+echo trylist=${trylist[*]}
+
+for NEARESTPKG in ${trylist[*]}; do
+    if [ -z "$(get_pkg_ver $NEARESTPKG)" ]; then
+	TEMP=$(sortnames $CFGROOT/$NEARESTPKG-[0-9]* | tail -1)
+	TEMP=${TEMP:-$(sortnames $CFGROOT/$NEARESTPKG.* | tail -1)}
+	TEMP=${TEMP:-$(sortnames $CFGROOT/$NEARESTPKG-* | tail -1)}
+	#TEMP=${TEMP:-$(sortnames $CFGROOT/$NEARESTPKG | tail -1)}
+	[ "$TEMP" ] && NEARESTPKG=$(basename $TEMP) || continue
+    fi
+
+    RADIX=$(get_pkg_radix $NEARESTPKG)
+    VER=$(get_pkg_ver $NEARESTPKG)
+    BUILD=$(get_build_num $NEARESTPKG)
+    NEARESTPKG=${RADIX}${VER:+-$VER}${BUILD:+-$BUILD}
+
+    #### [ "$(get_build_num $NEARESTPKG)" ] &&
+
+    [ -d "$CFGROOT/$NEARESTPKG" -o -f "$CFGROOT/$NEARESTPKG.$PKGSUFF" ] && break
+echo NEARESTPKG=$NEARESTPKG
+
+    ###TEMP=$(sortnames $CFGROOT/$NEARESTPKG-* | tail -1)
+    ###[ "$(get_build_num $TEMP)" ] && NEARESTPKG=$(basename $TEMP) && break
+done
+
+RADIX=$(get_pkg_radix $NEARESTPKG)
+VER=$(get_pkg_ver $NEARESTPKG)
+BUILD=$(get_build_num $NEARESTPKG)
+NEARESTPKG=${RADIX}${VER:+-$VER}${BUILD:+-$BUILD}
+
+echo "EXACTPKG=$EXACTPKG"
+echo "NEARESTPKG=$NEARESTPKG"
+
+# to be removed ## look if there was an argument, in which case we would treat it as a package
+# to be removed ## name (either source or destination, depending on the action). These variables
+# to be removed ## are set :
+# to be removed ##   - ARGPKGFULL  : full package name with version
+# to be removed ##   - ARGPKGRADIX : package radix name (without version)
+# to be removed ##   - ARGPKGVER   : package version without -flx*
+# to be removed ##   - ARGDISTVER  : package build version (flx*)
+# to be removed #
+# to be removed #if [ ${#ARGLIST[*]} -gt 0 ]; then
+# to be removed #    ARGPKGFULL=$(basename ${ARGLIST[0]})
+# to be removed #    ARGPKGRADIX=$(get_pkg_radix $ARGPKGFULL)
+# to be removed #    ARGPKGVER=$(get_pkg_ver $ARGPKGFULL)
+# to be removed #    if echo $ARGPKGFULL | grep -q -- "-flx\." ; then
+# to be removed #	 ARGDISTVER=$(get_build_num $ARGPKGFULL)
+# to be removed #    fi
+# to be removed #    ARGBASECFG=${ARGBASECFG:-$(sortnames $CFGROOT/$ARGPKGFULL* |tail -1)}
+# to be removed #    ARGBASECFG=${ARGBASECFG:-$(sortnames $CFGROOT/$ARGPKGRADIX-$ARGPKGVER-* |tail -1)}
+# to be removed #    ARGBASECFG=${ARGBASECFG:-$(sortnames $CFGROOT/$ARGPKGRADIX-$ARGPKGVER* |tail -1)}
+# to be removed #    ARGBASECFG=${ARGBASECFG:-$(sortnames $CFGROOT/$ARGPKGRADIX-* |tail -1)}
+# to be removed #fi
+# to be removed #
+# to be removed ## look for package name from the '.flxver' link in current dir, then dir name
+# to be removed #
+# to be removed #if [ -L .flxver ]; then
+# to be removed #    PKGFULL=$(readlink .flxver)
+# to be removed #else
+# to be removed #    PKGFULL=$(basename $(pwd))
+# to be removed #fi
+# to be removed #
+# to be removed #PKGRADIX=$(get_pkg_radix $PKGFULL)
+# to be removed #PKGVER=$(get_pkg_ver $PKGFULL)
+# to be removed #
+# to be removed #if [ -z "$DISTVER" ] && echo $PKGFULL | grep -q -- "-flx\." ; then
+# to be removed #    DISTVER=$(get_build_num $PKGFULL)
+# to be removed #fi
+# to be removed #
+# to be removed #BASECFG=${BASECFG:-$(sortnames $CFGROOT/$PKGFULL* |tail -1)}
+# to be removed #BASECFG=${BASECFG:-$(sortnames $CFGROOT/$PKGRADIX-$PKGVER-* |tail -1)}
+# to be removed #BASECFG=${BASECFG:-$(sortnames $CFGROOT/$PKGRADIX-$PKGVER* |tail -1)}
+# to be removed #BASECFG=${BASECFG:-$(sortnames $CFGROOT/$PKGRADIX-* |tail -1)}
+# to be removed #
+# to be removed #
+# to be removed #
+# to be removed ## now process the destination parameters
+# to be removed #
+# to be removed #if [ -L .flxver ]; then
+# to be removed #    NEWPKGFULL=$(readlink .flxver)
+# to be removed #else
+# to be removed #    NEWPKGFULL=$(basename $(pwd))
+# to be removed #fi
+# to be removed #
+# to be removed #NEWPKGRADIX=$(get_pkg_radix $NEWPKGFULL)
+# to be removed #NEWPKGVER=$(get_pkg_ver $NEWPKGFULL)
+# to be removed #NEWPKGVER=${NEWPKGVER:-$PKGVER}
+# to be removed #
+# to be removed #if [ -z "$NEWDISTVER" ] && echo $NEWPKGFULL | grep -q -- "-flx\." ; then
+# to be removed #    NEWDISTVER=$(get_build_num $NEWPKGFULL)
+# to be removed #fi
+# to be removed #NEWDISTVER=${NEWDISTVER:-$DISTVER}
+# to be removed #
+# to be removed ## recompute the new package version
+# to be removed #NEWBASECFG=${NEWBASECFG:-$NEWPKGRADIX-$NEWPKGVER-$NEWDISTVER}
+# to be removed #
+
+
+# now this is rather simple : for nearly all actions, NEWPKGFULL is used as the
+# directory name for the new package. If it cannot be found, all actions except
+# info and newpkg will fail. So we have to do a newpkg before using a new dir.
+
+if [ ! -d "$CFGROOT/$NEARESTPKG" -a ! -f "$CFGROOT/$NEARESTPKG.$PKGSUFF" ]; then
+    echo "Config directory <$NEARESTPKG> (NEARESTPKG) does not exist, use 'newpkg' first."
+    exit 1
+fi
+
+# source configuration
+ROOTDIR=${ROOTDIR:-$(pwd)/${INSTNAME}}
+
+
+CURPKG=$NEARESTPKG
+PKGRADIX=$(get_pkg_radix $NEARESTPKG)
+PKGVER=$(get_pkg_ver $NEARESTPKG)
+if echo $NEARESTPKG | grep -q -- "-flx\." ; then
+    DISTVER=$(get_build_num $NEARESTPKG)
+    NEARESTPKG=$PKGRADIX-$PKGVER-$DISTVER
+else
+    DISTVER=
+    NEARESTPKG=$PKGRADIX-$PKGVER
+fi
+
+CFGDIR=$CFGROOT/$CURPKG
+CFGFILE=$CFGDIR/$PKGRADIX.$CFGSUFF
+
+echo "CFGFILE=$CFGFILE, PKGVER=$PKGVER, CFGDIR=$CFGDIR"
+
+exit 0
+
+
+
+if [ -n "$CFGFILE" ]; then
+    CFGDIR=$NEWCFGROOT/$NEWBASECFG
+    . $CFGFILE
+else
+	    #CFGFILE=`find $CFGROOT/ -name "$pack[-_]*-${DISTVER:-*}-$FLXARCH.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`
+	    #CFGFILE=${CFGFILE:-`find $CFGROOT/ -name "$pack[-_]*-${DISTVER:-*}-*.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
+	    #CFGFILE=${CFGFILE:-`find $CFGROOT/ -name "$pack[-_]*.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
+	    #CFGFILE=${CFGFILE:-`find $CFGROOT/ -name "$pack.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
+	    CFGFILE=`find $CFGROOT/ -maxdepth 1 -type d -name "$pack[-_]*-${DISTVER:-*}-pkg"|sed -e "s/-pkg\$//"|sort|tail -1`
+	    CFGFILE=${CFGFILE:-`find $CFGROOT/ -maxdepth 1 -type d -name "$pack[-_]*-pkg"|sed -e "s/-pkg\$//"|sort|tail -1`}
+	    CFGFILE=${CFGFILE:-`find $CFGROOT/ -maxdepth 1 -type f -name "$pack[-_]*-${DISTVER:-*}-pkg.$PKGSUFF"|sed -e "s/-pkg\.$PKGSUFF\$//"|sort|tail -1`}
+	    CFGFILE=${CFGFILE:-`find $CFGROOT/ -maxdepth 1 -type f -name "$pack[-_]*-pkg.$PKGSUFF"|sed -e "s/-pkg\.$PKGSUFF\$//"|sort|tail -1`}
+
+	    # to be completed
+
+	    if [ -z "$CFGFILE" ]; then
+		echo "CFGFILE not found. Cannot continue." >&2
+		exit 1
+	    fi
+
+	    if [ -d $CFGFILE ]; then
+		CFGROOT=`dirname $CFGFILE`
+		CFGDIR=`basename $CFGFILE`-pkg
+		CFGFILE=$CFGROOT/$CFGDIR/$pack.$CFGSUFF
+	    else
+		CFGROOT=`dirname $CFGFILE`
+		CFGDIR=`basename $CFGFILE`-pkg
+		CFGFILE=$CFGROOT/$CFGDIR/$pack.$CFGSUFF
+		if [ ! -e $CFGROOT/$CFGDIR ]; then
+		    echo "Opening package $CFGROOT/$CFGDIR.$PKGSUFF into $CFGROOT/$CFGDIR..."
+		    mkdir -p $CFGROOT/$CFGDIR && tar -C $CFGROOT/$CFGDIR -Uxpf $CFGROOT/$CFGDIR.$PKGSUFF
+		    if [ $? != 0 ]; then
+			echo "There was an error during this operation. You may have to manually clean $CFGROOT/$CFGDIR. Cannot continue !"
+			exit 1
+		    else
+			echo "Done !"
+		    fi
+		fi
+	    fi
+
+	    if [ -e "$CFGFILE" ]; then
+		. $CFGFILE
+	    else
+		echo "CFGFILE ($CFGFILE) not found. Cannot continue." >&2
+		exit 1
+	    fi
+	fi
+
+	if [ -z "$DISTVER" ]; then
+	    if echo $CFGFILE | grep -q -- "-flx\." ; then
+		DISTVER=`echo $CFGFILE|sed 's/\(.*-\)\(flx.[0-9]\+\)\(.*\)/\2/'`
+	    else
+		DISTVER='flx.1'
+	    fi
+	fi
+
+	echo $packver | grep -q -- "-flx\."
+	if [ $? != 0 ] ; then
+	    packver=$packver-$DISTVER
+	fi
+
+	echo $packver | grep -q -- "-$FLXARCH\$" 
+	if [ $? != 0 ] ; then packver=$packver-$FLXARCH ; fi
+
+	prefix=${packver%%[._-][0-9]*} 
+	suffix=${packver#$prefix[._-]} 
+	PKGVER=${suffix%-flx*}
+	PKGRADIX=$prefix
+	#echo "packver=$packver suffix=$suffix PKGVER=$PKGVER"
+	if [ -z "$DISTVER" ]; then
+	    DISTVER=${suffix#$PKGVER-}
+	    if [ "$DISTVER" = "$PKGVER" ]; then
+		DISTVER="flx.1"
+	    else
+		DISTVER=${DISTVER%-*}
+	    fi
+	fi
+
+	case "$FLXARCH" in
+	    i686) arch=i686 cpu=i686 basearch=i386 ;;
+	    i486) arch=i486 cpu=i486 basearch=i386 ;;
+	    i386) arch=i386 cpu=i386 basearch=i386 ;;
+	    *)    arch=i586 cpu=i686 basearch=i386 ;;
+	esac
+
+	if [ -z "$FLXMAKE" ]; then
+	    FLXMAKE=make
+	fi
+
+    
+	if [ -z "${PATCH_LIST}" ]; then
+	    PATCH_LIST=${CFGFILE%%.$CFGSUFF}.diff
+	    if [ ! -e ${PATCH_LIST} ]; then
+		unset PATCH_LIST
+	    fi
+	fi
+
+	export DISTVER PKGRADIX PKGVER FLXMAKE PATCH_LIST FILE_LIST
+ 
+	declare -f pre_$ACTION > /dev/null && ( pre_$ACTION )
+	[ $? != 0 ] && exit $?
+	declare -f do_$ACTION > /dev/null && ( do_$ACTION )
+	[ $? != 0 ] && exit $?
+	declare -f post_$ACTION > /dev/null && ( post_$ACTION )
+	[ $? != 0 ] && exit $?
+    fi
+fi
 

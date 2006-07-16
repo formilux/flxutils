@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# flxextract - package extracter - version 0.0.2 - 2003-06-16
+# flxextract - package extracter - version 0.0.3 - 2005-10-31
 # This file is part of the Formilux project : http://formilux.ant-computing.com/
 #
 # Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
@@ -19,7 +19,7 @@ function main {
 
 	for pack in ${packages//,/ }; do
 	    pkgsrc=$(find $SEARCHPATH -name ${pack}'*'.lst | head -1)
-            [ "$pkgsrc" ] && break
+            [ -n "$pkgsrc" ] && break
 	done
 
 	if [ -z "$pkgsrc" ]; then
@@ -27,7 +27,7 @@ function main {
 	    continue
         fi
 
-	set -- $( grep "$file" $pkgsrc | awk '{ if ($8=="'$file'") print $0; }' )
+	set -- $(awk "/$file/ { if (\$8==\"$file\") print \$0; }" $pkgsrc)
 	if [ -z "$*" ]; then
 	    echo "##not found## $file $pkgsrc" >> $LOGFILE
             continue
@@ -36,7 +36,7 @@ function main {
 	    # it's a directory
             rm -f $ROOTDIR/$8 >/dev/null 2>&1 # just in case it was something else
 	    mkdir -p $ROOTDIR/$8
-	    touch -t `date -d "Jan 1 00:00:$7 UTC 1970" +"%Y%m%d%H%M.%S" ` $ROOTDIR/$8
+	    touch -t $(date -d "Jan 1 00:00:00 UTC 1970 + $7 sec" +"%Y%m%d%H%M.%S" ) $ROOTDIR/$8
    	    chown $3:$4 $ROOTDIR/$8
    	    chmod $2 $ROOTDIR/$8
 	    echo "$8/" >> $LOGFILE
@@ -48,8 +48,7 @@ function main {
 
     echo >&2 ; echo -n "Extracting files ..." >&2
     for lst in $( awk '{print $2}' $SFILES | sort -u ) ; do
-        tgz="$(dirname $lst)/$(basename $lst .lst).tgz"
-        grep -- " $lst$" $SFILES | awk '{print $1}' | tar zUxpvf $tgz -C $ROOTDIR -T - >> $LOGFILE
+        awk "/ $lst\$/ {print \$1}" $SFILES | tar zUxpvf ${lst%.lst}.tgz -C $ROOTDIR -T - >> $LOGFILE
 	echo -n "." >&2
     done
     echo "." >&2

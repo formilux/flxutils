@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# pkg - Formilux package builder - version 0.7.1 - 2005-12-17
+# pkg - Formilux package builder - version 0.7.0 - 2005-10-04
 #
 # Copyright (C) 2001-2005 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
@@ -8,7 +8,7 @@
 # This program is licenced under GPLv2 ( http://www.gnu.org/licenses/gpl.txt )
 
 ######## Please update this version ########
-PKG_VERSION=0.7.1
+PKG_VERSION=0.7.0
 ############################################
 
 ## WARNING ##
@@ -559,18 +559,13 @@ function get_name {
 	# we loop until pkg_name is empty, which allows recursive choices.
 	while [ "$pkg_name" ]; do
 	    # now we'll try to build a list of potentially matching packages for
-	    # each pattern. A valid package needs to host 'build.cfg'. We could
-	    # also look for the 'RELEASED' entry for released packages, but there
-	    # are still a lot of old ones without this entry. We'll reduce the
-	    # original name until either we have a non-empty list or the package
-	    # name is void.
+	    # each pattern. We'll reduce the original name until either we have
+	    # a non-empty list or the package name is void.
 	    rel_list=( ); dev_list=( )
 	    while [ "$pkg_name" -a -z "$rel_list" -a -z "$dev_list" ]; do
-		#rel_list=( $(find ${search_dir:+$search_dir/} $PKGROOT/ -maxdepth 2 -type f -path ${pkg_name}/build.cfg -printf "%h\n" 2>/dev/null) )
-		#rel_list=( ${search_dir:+$CURDIR} $(find $PKGROOT/ -maxdepth 2 -type f -path ${pkg_name}/build.cfg -printf "%h\n" 2>/dev/null) )
-		rel_list=( $(find ${search_dir:+$CURDIR/} $PKGROOT/ -maxdepth 2 -type f -path "*/${pkg_name}/build.cfg" -printf "%h\n" 2>/dev/null | uniq) )
+		rel_list=( $(find ${search_dir:+$search_dir/} $PKGROOT/ -maxdepth 1 -type d -name ${pkg_name} -printf "%p\n" 2>/dev/null) )
 		if [ "$release_only" != "1" ]; then
-		    dev_list=( $(find $DEVROOT/ -maxdepth 2 -type f -path "*/${pkg_name}/build.cfg" -printf "%h\n" 2>/dev/null) )
+		    dev_list=( $(find $DEVROOT/ -maxdepth 1 -type d -name ${pkg_name} -printf "%p\n" 2>/dev/null) )
 		fi
 		
 		if [ -z "${rel_list[*]}" -a -z "${dev_list[*]}" ]; then
@@ -726,7 +721,7 @@ function do_newpkg {
 
     if [ "${sort_list[*]}" ]; then
 	sort_list=($(IFS=$'\n'; echo "${sort_list[*]%-${BUILDSFX}*([0-9]).+([0-9])*}" | sort -u) )
-	sort_list=( $(sortnames ${sort_list[*]##*/} | uniq) )
+	sort_list=( $(sortnames ${sort_list[*]}) )
 	if [ "${radix/*\\**/}" -a "${ver/*\\**/}" ] && \
 	    ! (IFS=$'\n';echo "${sort_list[*]}"|grep -q "^$new_name\$"); then
 	    # if the package was properly named, and not already listed, let's
@@ -740,7 +735,15 @@ function do_newpkg {
 	    local i=0
 	    echo; echo ">>> Please select the name of the package to create :";echo
 	    while [ $i -lt ${#sort_list[*]} ]; do
-	        printf " %5d : %s\n" $[$i+1] ${sort_list[$i]##*/}
+		# we'll display an 'R' in front of released names, 'P'
+		# in front of packaged ones, or a 'D' for dev.
+		if [ -e "${sort_list[$i]}/RELEASED" ]; then
+		    printf " %5d : [R] %s\n" $[$i+1] ${sort_list[$i]##*/}
+		elif [ "${rel_list[*]/${sort_list[$i]}/}" != "${rel_list[*]}" ]; then
+		    printf " %5d : [P] %s\n" $[$i+1] ${sort_list[$i]##*/}
+		else
+		    printf " %5d : [D] %s\n" $[$i+1] ${sort_list[$i]##*/}
+		fi
 		i=$[$i+1]
 	    done
 
@@ -1107,7 +1110,7 @@ function _do_pack_files {
 	    bin/*|sbin/*|lib/*|*/sbin/*|*/bin/*|*/lib/*|*/libexec/*)
 		flr="$(file $REPLY)"
 		case "$flr" in
-		    *\ script\ *)
+		    *\ shell\ *)
 			echo "$REPLY $(head -1 $REPLY| sed -e 's/^#\! *\([^ ]\+\).*/\1/') \$SHELL">>$DEP_FILE
 			;;
 		    *perl\ commands*)
@@ -1255,7 +1258,7 @@ function do_pack {
 	    bin/*|sbin/*|lib/*|*/sbin/*|*/bin/*|*/lib/*|*/libexec/*)
 		flr="$(file $REPLY)"
 		case "$flr" in
-		    *\ script\ *)
+		    *\ shell\ *)
 			echo "$REPLY $(head -1 $REPLY| sed -e 's/^#\! *\([^ ]\+\).*/\1/') \$SHELL">>$DEP_FILE
 			;;
 		    *perl\ commands*)
@@ -1633,11 +1636,11 @@ function do_release {
 	last_pkg=${last_pkg##*released }
     fi
 
-    if [ "$last_pkg" != "${EXACTPKG##*/}" ]; then
+    if [ "$last_pkg" != "$EXACTPKG" ]; then
 	# Let's create a new changelog entry
 	touch $PKGDIR/ChangeLog	# avoid error message in case it doesn't exist
 	(echo '0a'; date +"%Y/%m/%d %H:%M  $LOGNAME@$HOSTNAME";
-	 echo ''; echo $'\t'"* released ${EXACTPKG##*/}";
+	 echo ''; echo $'\t'"* released $EXACTPKG";
 	 echo ''; echo '.' ; echo '1,$wq') | ed $PKGDIR/ChangeLog >/dev/null
     fi
 

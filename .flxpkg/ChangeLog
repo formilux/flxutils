@@ -1,0 +1,62 @@
+2005/04/10 22:56  willy@pcw
+
+	* released flxutils-0.1.29-flx0.1
+
+2005/04/09 15:06  willy@pcw
+
+	* pkg 0.5.2 fixes a small bug and provides support for RANLIB
+	* finally located the old signfs sources, so the binary could
+	  be replaced. Nobody should ever need it anyway, but it's
+	  more for cleanness.
+	* flx: added the '--ignore-dir' option to ignore differences
+	  in directories dates.
+	* flx: during a check, do not compute the md5 sums if the user
+	  asks to ignore it. This makes simple diffs a lot faster.
+	* flx: bumped version to 0.7.1
+
+2005/03/01 00:19  willy@wtap
+
+	* released flxutils-0.1.28-flx0.1
+	* pkg 0.5.0 provides some cross-compilation variables
+	* some makefiles have been modified to support cross-compilation
+
+2004/12/22 12:06  willy@wtap
+
+	* released flxutils-0.1.27-flx0.1
+	* merged benoit's patch to escape unprintable characters in flx.
+	* bumped flx version to 0.7.0
+
+2004/12/14 14:52  willy@wtap
+
+	* released flxutils-0.1.26-flx0.1
+	* fixed a bug in fct1.c where two different but valid links would
+	  not be reported as different.
+
+2004/12/07 19:39  willy@wtap
+
+	* released flxutils-0.1.25-flx0.1
+	* removed stupid debugging defines from init which prevented it from
+	  working anymore in 0.1.24 !
+
+2004/11/21 14:27  root@pcw
+
+	* released flxutils-0.1.24-flx0.1
+	* added the "wk" command (waitkey) to init
+	* wdd now automatically opens /dev/misc/watchdog as presented by devfs
+	* flx 0.6.8 builds with gcc-3.3
+
+2004/08/06 16:51  willy@wtap
+
+	* released flxutils-0.1.23-flx0.1
+	* brought back lcdwrite and lcdtee sources which were lost
+	* the watchdog daemon (wdd) now has a man page and can check
+	  reachability of arbitrary files.
+
+2004/02/24 21:31  willy@wtap
+
+	* released flxutils-0.1.22-flx0.1
+	* several major 'pkg' changes (update to 0.4.3)
+	* changed some makefiles to make use of new GCC options
+	  provided by pkg-0.4
+	* included and packaged 'wdd' (the watchdog daemon)
+

@@ -1,27 +1,83 @@
 #!/bin/bash
 
-# flxfix - 2003/01/31 - Willy Tarreau <willy@ant-computing.com>
+# flxfix 0.2 - 2005/04/17 - Willy Tarreau <willy@ant-computing.com>
 # Generates a shell script from a difference between two trees so that the last
-# one becomes as close to the first one as possible.
+# one becomes as close to the first one as possible. Second usage is to rebuild
+# all the meta-data from a signature.
+#
 # usage:
 #   flx check <reference> <tobefixed> | flxfix [ -R ] > fix.sh
-#   Use -R to swap the two trees
+#       Use -R to swap the two trees
+#   flx sign <reference> | flxfix -n > create.sh
+#       Generates a shell script which rebuilds the meta-data from the tree's
+#       signature.
+#
+# WARNING: this script does not understand flx-0.7's extended encoding of
+#          unprintable characters.
+
+
+entryisdiff=1
+restoredate=1
+unset mustswap ignoreuid
 
 # usage : fixperms $perm $uid $gid $date $name
 function fixperms {
-   echo touch -t \"`date -d "Jan 1 00:00:$4 UTC 1970" +"%Y%m%d%H%M.%S" `\" $5
-   echo chown $2:$3 $5
+   echo touch ${restoredate:+-t \"$(date -d "Jan 1 00:00:$4 UTC 1970" +"%Y%m%d%H%M.%S" )\"} $5
+   [ -z "$ignoreuid" ] && echo chown $2:$3 $5
    echo chmod $1 $5
 }
 
-mustswap=0
-if [ "x$1" = "x-R" ]; then
-   mustswap=1
-fi
+# swap diff direction : -/+, </>
+function swap {
+   local x
+   x=${1/</.}; x=${x/>/<}; x=${x/./>}
+   x=${x/-/.}; x=${x/+/-}; x=${x/./+}
+   echo -n $x
+}
 
-while read chg type perm uid gid size sign date name link rest; do
-   if [ $mustswap = 1 ]; then
-      chg=`echo $chg | tr '<>+\-' '><\-+'`
+# usage: usage progname exitcode
+function usage {
+   echo "$1: Generates a script to rebuild the meta-data from an flx signature"
+   echo "Usage:"
+   echo "    flx check <reference> <tobefixed> | $1 > fix.sh"
+   echo "    flx check <tobefixed> <reference> | $1 -R > fix.sh"
+   echo "    flx sign  <reference> | $1 -n > new.sh"
+   echo "    cat old-signature.lst | $1 -n > new.sh"
+   echo ""
+   echo "Options:"
+   echo "    -R    swap the two trees"
+   echo "    -n    recreate a new tree from a single signature"
+   echo "    -t    do not restore timestamp"
+   echo "    -u    do not restore uid/gid"
+
+   exit $2
+}
+
+
+while [ $# -gt 0 ]; do
+  if [ "x$1" = "x-R" ]; then
+     mustswap=1
+  elif [ "x$1" = "x-n" ]; then
+     unset entryisdiff
+  elif [ "x$1" = "x-u" ]; then
+     ignoreuid=1
+  elif [ "x$1" = "x-t" ]; then
+     unset restoredate
+  elif [ "x$1" = "x-h" ]; then
+     usage "${0##*/}" 0
+  else
+     echo "Warning: ignoring unknown option: $1"
+     usage "${0##*/}" 1
+  fi
+  shift
+done
+
+# trick: we only reference the 'chg' variable if 'entryisdiff' is set.
+while read ${entryisdiff:+chg} type perm uid gid size sign date name link rest; do
+   if [ -z "$entryisdiff" ]; then
+      chg='-'
+   elif [ -n "$mustswap" ]; then
+      chg=$(swap $chg)
    fi
 
    if [ "x$rest" != "x" -o "x$type" != "xl" -a "x$link" != "x" ]; then
@@ -45,7 +101,7 @@ while read chg type perm uid gid size sign date name link rest; do
       if [ x$type = xl ]; then
          # we'll rebuild a symbolic link
          echo ln -s $link $name
-         echo chown -h $uid:$gid $name
+         [ -z "$ignoreuid" ] && echo chown -h $uid:$gid $name
       elif [ x$type = xd ]; then
          # we'll rebuild a directory
          echo mkdir -p $name
@@ -70,7 +126,7 @@ while read chg type perm uid gid size sign date name link rest; do
          # we'll destroy and rebuild a symbolic link
          echo rm -f $name
          echo ln -s $link $name
-         echo chown -h $uid:$gid $name
+         [ -z "$ignoreuid" ] && echo chown -h $uid:$gid $name
       elif [ x$type = xc -o x$type = xb -o x$type = xf ]; then
          # we'll destroy and rebuild nodes
          echo rm -f $name

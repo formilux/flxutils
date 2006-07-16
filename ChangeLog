@@ -103,3 +103,57 @@
   - flx: during a check, do not compute the md5 sums if the user asks to
     ignore it. This makes simple diffs a lot faster.
   - flx: bumped version to 0.7.1
+
+2005/04/17
+  - flxfix: now also supports signature files in input ; added options to not
+    update timestamps or uid.
+
+2005/05/21
+  - pkg 0.5.3: added the NM variable, and changed options for OPT_SMALL
+
+2005/08/12
+  - pkg 0.5.4 : objdump is used to find lib dependencies instead of ldd, because
+    this last one is not cross-platform compatible, and abusively recurses
+    through the dependency tree instead of staying at the first level.
+  - pkg 0.5.4 : added some FLX* variables (notably FLXHOST* and FLXTARG*), and
+    the '--env' option to make pkg print the useful environment variables
+
+2005/08/13
+  - pkg 0.5.5 : executable dependencies are computed precisely with information
+    about every version needed for each library
+
+2005/08/17
+  - pkg 0.5.6 : reorganized the architecture detection a bit
+
+2005/08/21
+  - pkg 0.5.7 : added support for CXX and HOSTCXX variables
+  - pkg 0.5.8 : fixed .flxpkg symlink resolution ; tar now uses numeric owner
+
+2005/08/27
+  - pkg 0.6.0 : now supports local package repositories under .flxpkg as a
+    directory, and can ignore the local directory name if .flxpkg/Version
+    exists.
+
+2005/09/17
+  - pkg 0.6.1 : use --one-file-system instead of -l for tar (removes a warning)
+
+2005/10/04
+  - pkg 0.7.0 : * provide install-{ln,file,dir,dirs} so that build scripts can
+                  work at the file level
+                * added a PKG_VERSION variable and a check_pkg_version function
+                * fixed a few package naming bugs which showed up when packaged
+                  referenced absolute paths
+                * make sure that we chown root:root $ROOTDIR in prepack.
+
+2005/10/16
+  - findcdrom : * fixed parsing of /proc/sys/dev/cdrom/info
+                * code cleanup
+  - include/rules.make : add some configuration parameters
+
+2005/12/17
+  - pkg-0.7.1 : * newpkg: don't look for newname in .. anymore, and select only
+                  the packages containing a build.cfg
+                * newpkg: do not propose a list of multiple identical new names
+                * release: also identify non-shell text scripts.
+                * release: put only package's basename in changelogs.
+
