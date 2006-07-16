@@ -98,9 +98,9 @@ int  files_are_the_same(t_file_desc *f1, t_file_desc *f2, int Diff, char *path) 
 			if (!f2->md5) f2->md5 = checksum_md5_from_data(temp, l);
 		    }
 		}
-		if (strcmp(f1->link, f2->link)) 
-		    diff |= DIFF_LINK; /* links differ */
 	    }
+	    if (!(diff & DIFF_LINK) && strcmp(f1->link, f2->link)) 
+		diff |= DIFF_LINK; /* links differ */
 	}
     }
     if (DIFF(CHECKSUM) && S_ISREG(f1->stat.st_mode) && S_ISREG(f2->stat.st_mode)) {

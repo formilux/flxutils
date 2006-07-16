@@ -1,3 +1,6 @@
+2004/12/14 : Version 0.6.9
+- fixed a bug in fct1.c where two different but valid links would
+  not be reported as different.
 2004/11/21 : Version 0.6.8
 - now compiles with gcc-3.3
 2003/06/05 : Version 0.6.7

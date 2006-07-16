@@ -80,3 +80,7 @@
  - removed debugging defines from init which prevented it from working anymore
    in 0.1.24
 
+2004/12/14 : Version 0.6.9
+ - fixed a bug in fct1.c where two different but valid links would
+   not be reported as different.
+
