@@ -66,7 +66,7 @@ function choice {
 function main {
     local file
     local packages pack
-    local -a sources
+    local -a sources forced
     local pkgname matchlist
 
     exec 3>&0
@@ -82,15 +82,23 @@ function main {
 
         # check forced packages
         if [ ${#sources[*]} -gt 1 ] ; then
-            local -a forced=( $( for i in ${sources[*]} ; do f=${i##*/} ; f=${f%%.lst}; 
-                               [ "x${FORCED/* $f */}" == "x" ] && echo $i ; done ) )
-            [ "${#forced[*]}" -gt 0 ] && sources=( $forced[*] )
+            forced=( $( for i in ${sources[*]} ; do f=${i##*/} ; 
+                        f=${f%%.lst}; [ "x${FORCED/* $f */}" == "x" ] && echo $i && break ; 
+                        f=${f%-*}; [ "x${FORCED/* $f */}" == "x" ] && echo $i && break ; 
+                        f=${f%-*}; [ "x${FORCED/* $f */}" == "x" ] && echo $i && break ; 
+                        f=${f%%[._-][0-9]*}; [ "x${FORCED/* $f */}" == "x" ] && echo $i && break ; 
+                        done ) )
+            [ "${#forced[*]}" -gt 0 ] && sources=( ${forced[*]} )
         fi
 
         # remove rejected package 
         if [ ${#sources[*]} -gt 1 ] ; then
-            sources=( $( for i in ${sources[*]} ; do f=${i##*/} ; f=${f%%-*}; 
-                        [ "x${EXCEPT/* $f */}" != "x" ] && echo $i ; done ) )
+            sources=( $( for i in ${sources[*]} ; do f=${i##*/} ; 
+                         f=${f%%.lst}; [ "x${EXCEPT/* $f */}" == "x" ] && echo $i && break ; 
+                         f=${f%-*}; [ "x${EXCEPT/* $f */}" == "x" ] && echo $i && break ; 
+                         f=${f%-*}; [ "x${EXCEPT/* $f */}" == "x" ] && echo $i && break ; 
+                         f=${f%%[._-][0-9]*}; [ "x${EXCEPT/* $f */}" == "x" ] && echo $i && break ; 
+                         done ) )
         fi
         
         if [ "$RECHECK" = 1 -a "$packages" ] ; then 
@@ -223,8 +231,9 @@ LFILES=$TMPDIR/lfiles ; touch $LFILES
 
 # fabrication d'un fichier contenant l'ensemble des fichiers disponibles avec leur package
 # source
-OLDIFS=$IFS ; IFS=$'\n'
+OLDIFS=$IFS
 for path in $SEARCHPATH ; do
+    IFS=$'\n'
     if [ -d $path ] ; then
         for file in $( ls $path/*.lst ) ; do
             # echo -n \# >&2

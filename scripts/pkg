@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# /usr/sbin/pkg - Formilux source package manager - version 0.2.1 - 2003-02-11
+# /usr/sbin/pkg - Formilux source package manager - version 0.2.2 - 2003-02-14
 #
 # Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
@@ -281,7 +281,7 @@ function do_pack_files {
   echo "done."
 
   echo -n "Creating $PKGROOT/$packver.lst ... "
-  (flx sign --no-depth --ignore-dot `cut -f1 -d' ' $FILE_LIST` > $PKGROOT/$packver.lst) > /dev/null 2>&1
+  (flx sign --no-depth --ignore-dot `cut -f1 -d' ' $FILE_LIST|sed -e 's,/$,,'` > $PKGROOT/$packver.lst) > /dev/null 2>&1
   echo "done."
 
   F=$PKGROOT/$packver.$PKGSUFF
@@ -289,7 +289,7 @@ function do_pack_files {
 
   # we want everything, and directories only if they're empty. All this without './'
   # we shouldn't get an empty line since . should contain at least what we want to tar !
-  cut -f1 -d' ' $FILE_LIST | tar -T - -cf - | gzip -9 >$F 2>/dev/null
+  cut -f1 -d' ' $FILE_LIST|sed -e 's,/$,,' | tar -T - --no-recursion -cf - | gzip -9 >$F 2>/dev/null
   echo "done."
 
   if [ -n "$CFGFILE" ]; then
