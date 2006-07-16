@@ -1328,12 +1328,28 @@ int main(int argc, char **argv, char **envp) {
 		    conf_init = cfg_args[1];
 		    continue;
 		}
-		//} else if (token == TOK_EC) {
-		/* ec <string> : echo a string */
-		//int l = strlen(cfg_args[1]);
-		//cfg_args[1][l] = '\n';
-		//write(1, cfg_args[1], l + 1);
-		//goto finish_cmd;
+	    } else if (token == TOK_TE) {
+		/* te <var=val> : compare an environment variable to a value.
+		 * In fact, look for the exact assignment in the environment.
+		 * The result is OK if found, NOK if not.
+		 */
+		char **env = envp;
+		while (*env) {
+		    //printf("testing <%s> against <%s>\n", cfg_args[1], *env);
+		    if (!strcmp(*env, cfg_args[1]))
+			break;
+		    env++;
+		}
+		error = (*env == NULL);
+		goto finish_cmd;
+	    }
+
+	    /* other options are reserved for pid 1/linuxrc/rebuild and prompt mode */
+	    if (!pid1 && !linuxrc && !rebuild && cmd_input != INPUT_KBD) {
+		print("Command ignored since pid not 1\n");
+		error = context[brace_level].error;
+		continue;
+
 	    } else if (token == TOK_RD || token == TOK_EC) {
 		/* ec <string> : echo a string */
 		/* rd <string> : display message then read commands from the console instead of the file */
@@ -1359,27 +1375,6 @@ int main(int argc, char **argv, char **envp) {
 		error = context[brace_level].error;
 		write(1, msg, len);
 		cmd_input = INPUT_KBD;
-		continue;
-	    } else if (token == TOK_TE) {
-		/* te <var=val> : compare an environment variable to a value.
-		 * In fact, look for the exact assignment in the environment.
-		 * The result is OK if found, NOK if not.
-		 */
-		char **env = envp;
-		while (*env) {
-		    //printf("testing <%s> against <%s>\n", cfg_args[1], *env);
-		    if (!strcmp(*env, cfg_args[1]))
-			break;
-		    env++;
-		}
-		error = (*env == NULL);
-		goto finish_cmd;
-	    }
-
-	    /* other options are reserved for pid 1/linuxrc/rebuild and prompt mode */
-	    if (!pid1 && !linuxrc && !rebuild && cmd_input != INPUT_KBD) {
-		print("Command ignored since pid not 1\n");
-		error = context[brace_level].error;
 		continue;
 	    }
 
