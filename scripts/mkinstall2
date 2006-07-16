@@ -496,7 +496,7 @@ function mount_new_fs {
     rm -f /tmp/fstab
 
     echo "/proc		/proc		proc	defaults			0 0" >> /tmp/fstab
-    echo "#/dev		/dev		tmpfs	size=0,nr_inodes=4096,remount	0 0" >> /tmp/fstab
+    echo "#/dev		/dev		tmpfs	size=0,nr_inodes=4096,remount,nosuid	0 0" >> /tmp/fstab
     echo "/dev/pts	/dev/pts	devpts	defaults			0 0" >> /tmp/fstab
     echo "/dev/cdrom	/mnt/cdrom	iso9660	defaults,noauto,ro,users,exec	0 0" >> /tmp/fstab
 
@@ -520,7 +520,7 @@ function mount_new_fs {
 	    echo "$fs	$mp		$type	defaults			1 2" >> /tmp/fstab
 	fi
     done
-    echo "/var/empty	/var/empty	tmpfs	size=0,nr_inodes=1,ro,mode=0500	0 0" >> /tmp/fstab
+    echo "/var/empty	/var/empty	tmpfs	size=0,nr_inodes=1,ro,mode=0100,nosuid,nodev	0 0" >> /tmp/fstab
 }
 
 # unmounts all the new file-systems
@@ -913,7 +913,7 @@ EOF
   # if /var is on its own filesystem, /tmp must be a true filesystem too.
   if grep -q ' \(/dev/fs/var\|/dev/fs/var\.tmp\)$' $TMP/devmap; then
     if ! grep -q "^[^ 	]\+[ 	]\+/tmp[ 	]" $TMP/fstab; then
-      echo "/tmp		/tmp	tmpfs	defaults	0 0" >> $TMP/fstab
+      echo "/tmp		/tmp	tmpfs	defaults,nosuid,nodev	0 0" >> $TMP/fstab
     fi 
   fi 
        

@@ -1,0 +1,3 @@
+2003/07/22
+ - updated ifenslave to 1.0.12
+ - added 'nosuid,nodev' by default for tmp in mkinstall2
