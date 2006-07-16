@@ -1,3 +1,9 @@
 2003/07/22
- - updated ifenslave to 1.0.12
+ - updated ifenslave to 1.0.12 to be compatible with bonding after 2.4.21
  - added 'nosuid,nodev' by default for tmp in mkinstall2
+ - release 0.1.16
+
+2003/07/22
+ - reverted to ifenslave 1.0.11 because 1.0.12 breaks compatibility with
+   older versions while it claims to fix it !
+ - release 0.1.17
