@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# /usr/sbin/pkg - Formilux source package manager - version 0.2.0 - 2003-02-09
+# /usr/sbin/pkg - Formilux source package manager - version 0.2.1 - 2003-02-11
 #
 # Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
 #       mailto: benoit@ant-computing.com,willy@ant-computing.com
@@ -305,6 +305,7 @@ function do_strip {
   #find $ROOTDIR/. -type f | xargs file | grep ":.*executable.*not stripped" | cut -f1 -d: | xargs strip -x --strip-unneeded -R .note -R .comment > /dev/null 2>&1 
   # allow executable and shared (.so), but not relocatable (.o), both stripped or not stripped
   find $ROOTDIR/. -type f | xargs file | grep ":.*ELF.*\(executable\|\shared\).*stripped" | cut -f1 -d: | xargs strip -x --strip-unneeded -R .note -R .comment > /dev/null 2>&1 
+  return 0
 } 
 
 function pre_pack {
