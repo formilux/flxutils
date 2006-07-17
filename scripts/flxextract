@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# flxextract - package extracter - version 0.0.3 - 2005-10-31
+# flxextract - package extracter - version 0.0.4 - 2006-07-17
 # This file is part of the Formilux project : http://formilux.ant-computing.com/
 #
 # Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
@@ -15,7 +15,11 @@ function main {
     # le fichier si cela est possible
     while read file packages; do 
         echo -n \# >&2
-        if [ -z "$packages" ] ; then echo "##no package## $file" >> $LOGFILE ; continue ; fi
+        if [ -z "$packages" ] ; then
+	    echo -n "P" >&2
+	    echo "##no package## $file" >> $LOGFILE
+	    continue
+	fi
 
 	for pack in ${packages//,/ }; do
 	    pkgsrc=$(find $SEARCHPATH -name ${pack}'*'.lst | head -1)
@@ -23,12 +27,14 @@ function main {
 	done
 
 	if [ -z "$pkgsrc" ]; then
+	    echo -n "P" >&2
             echo "##no package## $file $packages" >> $LOGFILE
 	    continue
         fi
 
-	set -- $(awk "/$file/ { if (\$8==\"$file\") print \$0; }" $pkgsrc)
+	set -- $(awk "/${file##*/}/ { if (\$8==\"$file\") print \$0; }" $pkgsrc)
 	if [ -z "$*" ]; then
+	    echo -n "F" >&2
 	    echo "##not found## $file $pkgsrc" >> $LOGFILE
             continue
         fi
@@ -48,9 +54,10 @@ function main {
 
     echo >&2 ; echo -n "Extracting files ..." >&2
     for lst in $( awk '{print $2}' $SFILES | sort -u ) ; do
-        awk "/ $lst\$/ {print \$1}" $SFILES | tar zUxpvf ${lst%.lst}.tgz -C $ROOTDIR -T - >> $LOGFILE
-	echo -n "." >&2
+        awk "/${lst##*/}\$/ { if (\$2 == \"$lst\") print \$1}" $SFILES | tee -a $LOGFILE | tar zUxpf ${lst%.lst}.tgz -C $ROOTDIR -T - >>$LOGFILE.err 2>&1
+	( [ $? -eq 0 ] && echo -n "." || echo -n "!" ) >&2
     done
+    [ -s "$LOGFILE.err" ] || rm -f "$LOGFILE.err"
     echo "." >&2
 }
 
