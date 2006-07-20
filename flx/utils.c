@@ -146,8 +146,8 @@ char *escape_str(char *s) {
 		}
 		else {
 			*pbuff++ = '%';
-			*pbuff++ = DEC2HEX(*s/16);
-			*pbuff++ = DEC2HEX(*s%16);
+			*pbuff++ = DEC2HEX((*s >> 4) & 0xF);
+			*pbuff++ = DEC2HEX(*s & 0xF);
 			s++;
 			len += 3;
 		}

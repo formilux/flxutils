@@ -20,13 +20,13 @@
 
 #
 # File: Makefile
-# Version: 0.6
-# Date: Sun Dec 23 14:21:50 CET 2001
+# Version: 0.7.2
+# Date: Thu Jul 20 20:54:50 CET 2006
 #
 
 
 NAME=flx
-VERSION=0.7.1
+VERSION=0.7.2
 SRC=main.c arg.c utils.c md5.c flx.c fct1.c check.c sign.c \
     input.c input_fs.c input_file.c \
     output.c output_file.c
