@@ -1,0 +1,2 @@
+#!/bin/sh
+pcidev  /lib/modules/`uname -r`/modules.pcimap | grep '^##none## [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+'|sed -e 's/^[^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ //'

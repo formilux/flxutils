@@ -1,0 +1,20 @@
+Warning !!!
+
+  1) this package should be compiled with the "pkg" command distributed with Formilux
+  2) dietlibc and sstrip are needed for most small utilities. Since they're not available
+     everywhere, a pre-compiled version of these utilities is provided. To avoid unexpected
+     cleanups, "pkg clean" only cleans the minimum, and you have to use "pkg distclean" to
+     clean everything. Don't do it if you don't have all the tools to rebuild ! In this case,
+     proceed this way :
+
+        # pkg compile ; pkg prepack ; pkg strip ; pkg pack ; pkg clean
+
+Note: the "pkg" command uses several special variables which can be defined in
+the pkg file :
+  - PATCH_LIST is a list of patches to apply with "pkg patch" or revert with
+    "pkg unpatch" ;
+  - FILE_LIST contains the name of a file (.flxfiles) which contains a listing
+    of all files of the current directory to be archived in the package,
+    instead of making a tar of .flxdisk. Note that do_prepack() and do_strip()
+    should be redefined in this case (at least to do nothing).
+

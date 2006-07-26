@@ -1,0 +1,20 @@
+#!/bin/sh
+
+basename=`basename $0`
+param=$*
+
+set a `pidof -x -o $$ -o %PPID $basename `
+shift
+
+if [ $# -ge 1 ] ; then 
+  kill $*
+  exec /sbin/shutdown $param
+  exit 0
+fi
+echo "Reboot requested, ... hit a second time to confirm!" | tee /dev/console | wall
+
+( sleep 2 ; \
+echo "Time elapsed (2 seconds), reboot canceled!"| tee /dev/console | wall ) &
+
+exit 0
+

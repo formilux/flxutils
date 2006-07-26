@@ -1,0 +1,141 @@
+#! /bin/sh
+#
+# The block between #B and #E will be used as help.
+#B
+# Formilux 0.1.5 - http://www.ant-computing.com/
+# PCIDEV - PCI device drivers scanner version 0.2
+# 2002/02/02 - Willy Tarreau - willy@ant-computing.com
+# May be redistributed under the terms of the GPL.
+#
+# usage :
+#   pcidev [-vnm] [path to modules.pcimap]
+# example :
+#   pcidev /lib/modules/`uname -r`/modules.pcimap
+#
+# This program lists all pci devices, displays their IDs
+# and the names of the driver attached to each device, when
+# available, or "##none##'. If an argument is passed, it will
+# be interpreted as the path to a modules.pcimap file. In this
+# case, the list of all possible modules for each device is
+# appended at the end of the line.
+# If the "-n" argument is given, only modules that seem not to
+# have already been loaded will be. If the "-m" argument is given,
+# those modules will be loaded through modprobe (verbosely if "-v"
+# is specified).
+#E
+MODPROBE=0
+ONLYNEW=0
+VERBOSE=0
+MAPFILE=
+PCIDEVDIR=/proc/bus/pci
+
+if [ ! -d "$PCIDEVDIR" ]; then
+   echo "No PCI support on this host. Aborting."
+   exit 1
+fi
+
+while [ $# -gt 0 ]; do
+    case $1 in
+      -v)
+         VERBOSE=1
+	 ;;
+      -n)
+         ONLYNEW=1
+	 ;;
+      -m)
+	 MODPROBE=1
+	 ONLYNEW=1
+	 ;;
+      -*)
+	 sed -e '/^#B/,/^#E/!d' --e 's/^#.\?//' < $0
+	 exit 1
+	 ;;
+      *)
+         break
+	 ;;
+    esac
+    shift
+done
+
+if [ $ONLYNEW -gt 0 ]; then
+    MAPFILE=/lib/modules/`uname -r`/modules.pcimap
+fi
+
+if [ $# -gt 0 ]; then
+    MAPFILE=$*
+fi
+
+
+# let's collect a list of all PCI devices in the form bus/slot.func
+pcidev=$PCIDEVDIR/*/*
+
+if [ $ONLYNEW -eq 0 ]; then
+   echo "# module device(entry) class  vid  pid  svid spid irq modules"
+fi
+
+for device in $pcidev; do
+    x=${device%??/??.?}
+    dev=${device#$x}
+    set -- `od -v -tx1 -An $device`
+
+    # at first it semt it was possible not to display bridges
+    # but cardbus bridges (at least) do have a driver.
+    #if [ "${12}" = "06" ]; then
+	# this is a bridge => no driver !!
+	#continue;
+    #fi
+    vid=$2$1; pid=$4$3; class=${12}${11}${10};
+    svid=${46}${45}; spid=${48}${47}
+
+    # now construct in <entry> a 16 bits entry for pci/devices from $dev
+    set -- `echo $dev|tr '/.' '  '`
+    bus=$1; slot=$[0x$2]; func=$[0x$3];
+    high=$[((($slot<<3)+$func)>>4)+1]; low=$[((($slot<<3)+$func)&15)+1]
+    set 0 1 2 3 4 5 6 7 8 9 a b c d e f
+    eval entry=${bus}\${$high}\${$low}
+
+    # look for a registered device in /proc/bus/pci/devices
+    set -- `grep "^$entry" $PCIDEVDIR/devices`
+    irq=$[0x$3]; driver=${18}
+
+    # look for modules supporting these devices
+    if [ ! -z "$MAPFILE" ]; then
+	list=""
+	while read; do
+	    set -- $REPLY
+	    if [ "$1" != "#" ]; then
+		res=$[($2 == 0x$vid  || $2 == 0xffffffff) && \
+		    ($3 == 0x$pid  || $3 == 0xffffffff) && \
+		    ($4 == 0x$svid || $4 == 0xffffffff) && \
+		    ($5 == 0x$spid || $5 == 0xffffffff) && \
+		    ((0x$class & $7) == $6) ]
+		if [ $res -gt 0 ]; then
+		    list="$list$1 "
+		fi
+	    fi
+	done < $MAPFILE
+    fi
+
+    if [ -z "$driver" ]; then
+	if [ $ONLYNEW -gt 0 ]; then
+	    if [ "$list" ]; then
+		if [ $MODPROBE -gt 0 ]; then
+		    for module in $list; do
+			if [ $VERBOSE -gt 0 ]; then
+			    echo "modprobe $module"
+			fi
+			modprobe $module
+		    done
+		else
+		    echo $list
+		fi
+	    fi
+	else
+	    echo "##none## $dev($entry) $class $vid $pid $svid $spid $irq $list"
+	fi
+    else
+	if [ $ONLYNEW -eq 0 ]; then
+	    echo "$driver $dev($entry) $class $vid $pid $svid $spid $irq $list"
+	fi
+    fi
+done

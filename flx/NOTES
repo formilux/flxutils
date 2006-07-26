@@ -1,0 +1,143 @@
+Une fonction qui permet de completer la structure contenue dans ctxtree d'après la source qui lui est fournie. Le contexte doit conserver le niveau de descente le plus bas lors de la lecture des informations de manière à optimiser les accès lors de la comparaison. 
+
+Une fonction qui permet de comparer 2 contextes d'arborescence. On compare les arborescences à partir du niveau commun le plus elevé (PGCD), et uniquement pour les parents marqués modifiés. Cette comparaison s'effectue sur chacun des éléments.
+
+Ces opérations s'effectuent en boucle jusqu'à la fin de la lecture des données dans chacune des sources.
+
+Opérations de signatures et de comparaison:
+/#flxsign etc 
+ etc/.
+ etc/..
+ etc/X11
+ (...)
+ etc/zprofile
+
+#flxsign /etc
+ etc/.
+ etc/..
+ etc/X11
+ (...)
+ etc/zprofile
+
+#flxsign ../etc
+ etc/etc-cont
+
+/#flxsign ../../../../etc
+ etc/.
+ etc/..
+ etc/X11
+ (...)
+ etc/zprofile
+
+/#flxsign ./etc
+ etc/etc-cont
+
+/#flxsign ././././etc
+ etc/etc-cont
+
+#flxsign /usr/local/bin/../../etc
+ etc
+
+#flxsign /usr/local/bin/../../local/etc
+ local/etc
+
+/home/ben#flxsign usr/../../etc
+ etc
+
+#flxsign /etc/.
+ etc-cont
+
+* on supprime tout ce qui se trouve à gauche d'un '.' ou d'un '..'
+* on supprime le premier '/'
+
+#flxsign /
+ slash-cont
+
+#flxsign ../
+ ..-cont
+
+#flxsign /etc /usr/etc
+ etc/etc-cont
+ usr/etc/usr_etc-cont
+
+/usr#flxsign /etc ../etc
+ etc/etc-cont
+ etc/.._etc-cont (/etc)
+
+/usr/local#flxsign /etc ../etc
+ etc/etc-cont
+ etc/.._etc-cont (/usr/etc)
+
+/#flxsign /etc etc
+ etc/etc-cont
+ etc/etc-cont
+
+* par un flag, permettre faire correspondre avec le filesystem (résolution physique)
+
+/#flxsign /etc etc=old-etc
+ etc/etc-cont
+ old-etc/etc-cont
+
+/#flxsign /etc /save/etc=old-etc
+ etc/etc-cont
+ old-etc/save_etc-cont
+
+/#flxsign /etc /save/etc=old-etc stdout:=/backup/server1
+ /backup/server1/etc/etc-cont
+ /backup/server1/old-etc/save_etc-cont
+
+* la sortie travaille au niveau chaine contrairement à l'entrée qui travaille au niveau
+  de la signification de l'élément
+
+#flxsign /server1/./etc
+ etc/server1_etc-cont
+
+
+-------------------------------
+check
+
+/usr#flxcheck /usr/etc --diff /etc         
+ usr/etc/usr_etc-cont  <-> etc/etc-cont -> no
+
+/usr#flxcheck /usr/etc=/etc --diff /etc
+ etc/usr_etc-cont  <-> etc/etc-cont     -> ok
+
+/usr#flxcheck /usr/./etc --diff /etc
+ etc/usr_etc-cont  <-> etc/etc-cont     -> ok
+
+#flxcheck 
+
+* option nettoyage des '/', supprimer debut, fin et multiples
+
+* (précision des 3 parametres d'output 1 pour src1 1 pour source 2 et un global)
+  pour chaque source, on peut préciser un préfixe aux résultats des sources 
+  respectives.
+  le troisième paramêtre, pour l'output permet de globalement réécrire l'output.
+  --in1=/usr/local /usr/local/./etc --in2=/ /etc stdout:/server1
+  compare les répértoires /usr/local/etc et /etc, écrit sous la forme le répertoire
+  et les faits précéder de /server1 :
+  /server1/usr/local/etc/...
+  /server1/etc/...
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+ 
+
+
+
+
+
+

@@ -1,0 +1,350 @@
+#!/bin/sh
+
+yesno () {
+        echo -n "$1 [$2] : "; read
+        if [ "$REPLY" = "" ]; then
+                REPLY=$2;
+        fi
+        if [[ ( "$REPLY" = "O" ) || ( "$REPLY" = "o" ) || \
+              ( "$REPLY" = "y" ) || ( "$REPLY" = "Y" ) ]]; then
+           REPLY="O"
+           return 0
+        fi
+        return 1
+}
+
+update_sig () {
+    file=$1
+}
+
+update_dep () {
+    file=$1
+}
+
+if [ -z "$PKGROOT" ] ; then PKGROOT=/var/install; fi
+T=/tmp/flx.inst.$$
+T1=$T/f1
+T2=$T/f2
+T3=$T/f3
+T4=$T/f4
+T5=$T/f5
+rm -rf $T ; mkdir $T ; touch $T3
+touch $T5
+
+if [ -f $PKGROOT/depend.lst ]  ; then
+   . $PKGROOT/depend.lst
+fi
+
+force=0
+lookfordepend=1
+while [ $# -gt 0 ] ; do 
+  case $1 in
+    -t) # install most recent
+       doitfor=time
+       ;;
+    -f) # force reinstall
+       force=1
+       ;;
+    -f*) # force n reinstall recursive level
+       force=${1#-f}
+       ;;
+    -s) # install most recent
+       doitfor=size
+       ;;
+    -nd) # no dependence
+       lookfordepend=0
+       ;;
+    -r) # change root dir
+       shift
+       ROOT=$1
+       ;;
+    -v) # view only
+       mode=view
+       ;;
+    -I) # read from input
+       cat >> $T1
+       ;;
+    *) echo $1 >> $T1 ;;
+  esac
+  shift
+done
+
+exec 3>&0
+# lire l'existant et s'en servir de base
+if [ -f $ROOT/etc/formilux/sig.dat ] ; then
+  grep -v ^d $ROOT/etc/formilux/sig.dat | awk '{ print $8 }' > $T3
+elif [ -f $ROOT/etc/formilux/depend.dat ] ; then
+  cat $ROOT/etc/formilux/depend.dat | cut -f1 -d' ' | cut -f1 -d'('> $T3
+#   find . ! -type d > $T3
+fi
+# lecture des fichiers de dependance de manière infinie
+while [ -f $T1 ] ; do
+ # lecture sur la dernière liste non résolue
+while read ; do 
+  if [ -z "$REPLY" -o "${REPLY// /}" = "" ] ; then continue; fi
+  if [ "${REPLY/*\$*/\$}" = '$' ] ; then
+    REPLY=`eval echo "$REPLY"` 
+    for i in $REPLY ; do
+       echo $i >> $T2
+    done
+    continue
+  fi
+  set $REPLY
+  depend=${1##*\(}
+  depend=${depend%%\)}
+  if [ "$depend" = "$1" ] ; then depend="" ; fi
+  file=`echo "${1%\(*\)}" | sed -e 's/\./\\./g' -e 's/*/.*/g' -e 's/\[/\\\[/g' -e 's/^\///' `
+  # looking for existing 
+  if [ "$force" -lt 0 ] && grep -q "^\(.*/\)\?$file$" $T3 ; then continue ; fi 
+  # looking for already installed 
+  if grep -q "^\(.*/\)\?$file$" $T5 ; then continue ; fi
+#   if [ -e $ROOT/$file ] ; then
+#      update_sig $file
+#      update_dep $file
+#      continue
+#   fi
+  request=$1
+  echo -n "Looking for $request ... "
+  m="[^ ]\+ \+"
+  if [ "$depend" ] ; then
+    lfile=`find $PKGROOT/ -name "$depend.lst" | xargs grep -sH "^\($m\)\{7\}\([^ ]*/\)\?$file\( .*\)\?$" | tr -s ' ' :` 
+  else 
+    lfile=`find $PKGROOT/ -name "*.lst" | xargs grep -sH "^\($m\)\{7\}\([^ ]*/\)\?$file\( .*\)\?$" | tr -s ' ' :` 
+  fi
+  n=1
+  
+  if [ `echo $lfile | wc -w` -gt 1 ] ; then 
+    if [ "$doitfor" = time ] ; then 
+      n=1
+      oldtime=0
+      for i in $lfile ; do 
+        set ${i//:/ }
+        Rtype=$2
+        if [ ${#Rtype} = 10 ] ; then
+           Rtime=$7
+        else
+           Rtime=$8
+        fi
+        if [ $Rtime -gt $oldtime ] ; then
+            oldtime=$Rtime
+            oldn=$n
+        fi
+        n=$[ n + 1 ]
+      done
+      n=$oldn
+    elif [ "$doitfor" = size ] ; then
+      n=1
+      oldsize=99999999
+      for i in $lfile ; do 
+        set ${i//:/ }
+        Rtype=$2
+        if [ ${#Rtype} = 10 ] ; then
+           Rsize=$5
+        else
+           Rsize=$6
+        fi
+        if [ $Rsize -gt $oldsize ] ; then
+            oldsize=$Rsize
+            oldn=$n
+        fi
+        n=$[ n + 1 ]
+      done
+      n=$oldn
+    else
+      rep=n
+      all=""
+      echo 
+      while [ "$rep" != O ] ; do
+        n=1
+        for i in $lfile ; do 
+          if [ -n "$all" ] ; then
+            all="$all,$n"
+          else
+            all=$n
+          fi
+          set ${i//:/ }
+          Rsrc=$1
+          Rtype=$2
+          if [ ${#Rtype} = 10 ] ; then
+           Rlink=$9
+           Rtime=$7
+           Rsize=$5
+           Rfile=$8
+          else
+           Rlink=${10}
+           Rtime=$8
+           Rsize=$6
+           Rfile=$9
+          fi
+          if [ "$Rlink" ] ; then
+            echo "$n : $Rfile ($Rsize bytes,${Rtime}s,$Tlink) in $Rsrc"
+          else
+            echo "$n : $Rfile ($Rsize bytes,${Rtime}s) in $Rsrc"
+          fi
+          n=$[ n + 1 ]
+        done
+        echo -n "Which of these packages ? (separated by ',', 'a' for all) : "
+        read n <&3
+        if [ "$n" = "a" ] ; then n=$all ; fi
+        yesno "Selection [$n] is ok (y/n)? " y <&3 
+        rep=$REPLY
+      done
+      echo -n "  * Looking for $request ... "
+    fi
+  fi
+  if [ `echo $lfile | wc -w` -eq 0 -o "$n" = "" ] ; then
+    echo "missing." 
+    echo "$file" >> $T4
+  else
+   for line in `echo $lfile | cut -f$n -d' '` ; do
+    set ${line//:/ }
+    Rsrc=$1
+    Rtype=$2
+    if [ ${#Rtype} = 10 ] ; then
+     Rfile=$8
+     Rlink=$9
+    else
+     Rfile=$9
+     Rlink=${10}
+    fi
+    grep -F "$Rfile" $1 >> $T/sig.dat
+    d=$T/`dirname $1`
+    if [ ! -d $d ] ; then mkdir -p $d ; fi
+    f1=`dirname $Rsrc`/`basename $Rsrc .lst`.dep
+    f2=`echo $Rsrc|sed 's/-[0-9].*\.lst//'`.dep
+    unset dep
+    if [ $lookfordepend = 1 ] ; then
+      if [ -f $f1 ] ; then
+        # grep "^$Rfile " $f1 | cut -f2- -d' ' | tr ' ' '\12' | tee -a $T2
+        dep="$dep `grep "^\(.*/\)\?$Rfile " $f1 | cut -f2- -d' '`"
+      fi
+      if [ -f $f2 ] ; then
+        # grep "^$file " $f2 | cut -f2- -d' ' | tr ' ' '\12' | tee -a $T2
+        dep="$dep `grep "^\(.*/\)\?$file " $f2 | cut -f2- -d' '`"
+      fi
+      if [ "$dep" ] ; then
+        dep="`echo "$dep" | tr ' ' '\012' | sort -u | tee -a $T2`"
+      fi
+    fi
+    # file=`eval echo "$file" | sed -e 's/\[/\\\[/g' `
+    pkg=`basename $Rsrc .lst`
+    echo "$Rfile" >> $T/$Rsrc     # where to find file
+    file=$Rfile
+    if [ "`echo $file  | cut -c1`" = '/' ] ; then
+       echo "skipping (file $file begins with '/')"
+       continue
+    #elif [ "`echo $file | cut -c1-2`" != './' ] ; then
+    #   file="./$file"
+    fi
+    echo $file >> $T5 # files that are already scan
+    if [ "$Rlink" ] ; then   # link dependency
+      echo
+      echo -n "  - Link '$Rlink' to '$file' -> "
+      if [ "`echo $Rlink | cut -c1`" = / ] ; then
+        echo "$Rlink" >> $T2
+        echo "dependency link '$Rlink'"
+      else
+        d=`dirname $file`/$Rlink
+        d=`dirname $d`
+        d=`basename $d`
+        echo "$d/`basename $Rlink`" >> $T2
+        echo "dependency link '$d/`basename $Rlink`'"
+      fi
+      echo -n "  * Looking for $request ... "
+    fi
+   done
+   echo "done."
+   echo "$file($pkg) `echo "$dep" | tr '\012' ' '`" >> $T/depend.dat
+  fi
+ done < $T1 
+ force=$[ force - 1 ]
+ rm -f $T1
+ if [ -f $T2 ] ; then mv -f $T2 $T1 ; fi
+done
+
+echo "Files search done."
+# untar data defined from designed package file
+find $T -name "*.lst" | while read ; do
+  tgz=/`dirname $REPLY|cut -f4- -d/`/`basename $REPLY .lst`
+  pkg=`basename $REPLY .lst`
+  if [ "$mode" = view ] ; then
+      opt=Utv
+  else
+      opt=Uxv
+  fi
+  if [ -f $tgz.tgz ] ; then
+    (cd $ROOT/ ; tar z${opt}Uf $tgz.tgz -T $REPLY )
+  elif [ -f $tgz.tar.gz ] ; then
+    (cd $ROOT/ ; tar z${opt}Uf $tgz.tar.gz -T $REPLY )
+  elif [ -f $tgz.tar.bz2 ] ; then
+    (cd $ROOT/ tar j${opt}Uf $tgz.tar.bz2 -T $REPLY )
+  fi 
+done
+
+if [ -e $T4 ] ; then
+  echo "Missing files are:"
+  cat $T4
+fi
+
+if [ ! -d $ROOT/etc/formilux ] ; then
+  mkdir -p -m 0755 $ROOT/etc/formilux
+fi
+
+function update_depend {
+  if [ -e $T/depend.dat ] ; then
+    if [ -e $ROOT/etc/formilux/depend.dat ] ; then
+      sort -u $ROOT/etc/formilux/depend.dat > $T4
+      while read ; do
+        set -- `echo "$REPLY" | sed 's/[() ]/ /'`
+        line="`grep "^$1[( )]" $T/depend.dat`"
+        if [ $? = 0 ] ; then
+          echo "$line" >> $T/newdepend.dat 
+        else
+          echo "$REPLY" >> $T/newdepend.dat
+        fi
+      done < $T4
+      # sort -u $T/depend.dat $T/newdepend.dat | diff -u -0 $T4 -
+      sort -i $T/depend.dat $T/newdepend.dat > $ROOT/etc/formilux/depend.dat
+    else
+      sort $T/depend.dat > $ROOT/etc/formilux/depend.dat
+    fi
+  fi
+}
+
+function update_sig2 {
+  if [ -e $T/sig.dat ] ; then
+    if [ -e $ROOT/etc/formilux/sig.dat ] ; then
+      grep -v ^d $T/sig.dat | awk '{print $8}' | xargs signfs -f $ROOT/etc/formilux/sig.dat -c --ignore-date | \
+        grep "^\(-\|+\|>\)" | cut -c3- > $T4
+      cat $T4 > $ROOT/etc/formilux/sig.dat
+    else
+      sort +7 $T/sig.dat > $ROOT/etc/formilux/sig.dat
+    fi
+  fi
+}
+
+function update_sig {
+  if [ -e $T/sig.dat ] ; then
+    if [ -e $ROOT/etc/formilux/sig.dat ] ; then
+      sort +7 -u $ROOT/etc/formilux/sig.dat > $T4
+      while read ; do
+        set -- $REPLY
+        line="`grep " $8\([ ].\+\)\?$" $T/sig.dat`"
+        if [ $? = 0 ] ; then
+          echo "$line" >> $T/newsig.dat 
+        else
+          echo "$REPLY" >> $T/newsig.dat
+        fi
+      done < $T4
+      # sort +7 -u $T/sig.dat $T/newsig.dat | diff -u -0 $T4 -
+      sort +7 -u $T/sig.dat $T/newsig.dat > $ROOT/etc/formilux/sig.dat
+    else
+      sort +7 $T/sig.dat > $ROOT/etc/formilux/sig.dat
+    fi
+  fi  
+}
+
+update_sig2
+
+rm -rf $T
+

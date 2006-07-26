@@ -1,0 +1,99 @@
+< extracted from init.c >
+
+/*
+  preinit - new try on 2002/04/20 - Willy Tarreau <willy AT meta-x.org>
+
+  usage : /sbin/preinit [ \< config_file ] [ { init args | "rebuild" } ]
+
+  Note : the "\< config_file" is to be used within configuration files :
+	  #!/sbin/preinit <
+	  ....
+  Thus, when you pass "init=/.preinit", the kernel executes :
+          /sbin/preinit < /.preinit
+
+  The '<' character has been chosen for its rareness.
+
+  the "rebuild" argument make the tool only rebuild a complete /dev
+  tree from the informations contained in the .preinit file, and then
+  exit. It does this even if the pid is not 1, but doesn't execute nor 
+  mount anything. Only mkdir, links, blocks, chars and fifo devices are
+  created. Very useful before a lilo :
+
+  # chroot /mnt/disk /.preinit rebuild
+  # lilo -r /mnt/disk
+  # umount /mnt/disk/dev
+
+  If /dev/console is found under /dev, it will not be rebuilt.
+
+  **** needs to rework the doc a bit since it's not up-to-date. ****
+
+  This code tries to build a few filesystem squeleton so that init has enough
+  to work correctly :
+    - mount -t proc /proc /proc
+    - mount -t tmpfs /dev /dev
+    - get information from a file : /.preinit which describes what to mount,
+      what ramdisks, links and dirs to make :
+
+ln      L source dest
+      	make a symlink from <source> to <dest>
+md      D path [ mode ]
+      	create a directory named <path> with the mode <mode>. If mode is left
+	undefined, 0755 is assumed.
+mt      M blkdev[(major:minor)] path fstype [ { ro | rw } [ flags ] ]
+      	if <major:minor> is specified, create a block device <blkdev>
+	with <major> and <minor> and mode 0600.
+	mount <blkdev> under <path> with type <fstype>, read-only, except if
+	rw is specified, and args <flags>.
+in      I path
+      	set the next init program to <path>
+ex      E cmd [ args ]*
+      	execute <cmd> with args <args> and wait for its completion.
+rx      R dir cmd [ args ]*
+      	chroot to <dir>, execute <cmd> with args <args> and wait for its completion.
+bl      B mode uid gid major minor naming_rule
+        create a set of block devices
+ch      C mode uid gid major minor naming_rule
+        create a set of char devices
+fi      F mode uid gid name
+	create a fifo
+ma      U mode
+	change umask
+pr      P <new_root> <put_old_relative>
+        pivot root : old root is displaced into new_root/put_old_relative, and
+	new_root is displaced under /.
+mv      K <old_dir> <new_dir>
+        keep directory <old_dir> after a pivot, then unmount it from old_dir.
+	usefull for /dev, /proc, /var ...
+um      O <old_dir>
+        umount <old_dir> after a pivot for example.
+lo      l </dev/loopX> <file>
+	losetup /dev/loopX file.
+      # anything
+      	comment.
+
+    The devices naming rules consist in strings mixed with numbering rules delimited with
+    brackets. Each numbering rule has 4 comma-separated fields :
+      - type of this string portion : 'c' for a single char, 'i' for an int, 'I' for an int
+        for which 0 is not printed, 'h' for an hex digit
+      - the range : 
+          - chars: any concatenation of character ranges separated with a dash '-': 'a-fk-npq'
+	  - ints : either an int or a range composed of 2 ints separated with a dash : '1-16'
+	  - hex  : same as int, but with hex digits (case insensitive)
+      - the scale : how much to add to the minor device for each step in the range.
+
+    The commands may be prefixed with a '|' or '&', in which case, they will be
+    executed only if the previous command failed (|) or succeeded (&).
+
+    Example :
+      ln hda3 /dev/disk  => symlinks /dev/disk to hda3
+      md /var/tmp 1777	=> creates a directory /var/tmp with mode 1777
+      mt /dev/hda1 /boot ext2 => attempts to mount /dev/hda1 read-only under /boot.
+      |mt /dev/hda1(3:1) /boot ext2 => only if the previous command failed, creates /dev/hda1 with major 3, minor 1 and mounts it under /boot
+      in /sbin/init-std  => the following init will be this /sbin/init-std (31 chars max)
+      ex /sbin/initramdisk /dev/ram6 1200 => executes /sbin/initramdisk with these args and waits for its completion
+      bl 0600 0 0 3 1 hd[c,ab,64][i,1-16,1] => makes all hdaX and hdbX with X ranging from 1 to 16
+      ch 0600 0 5 2 0 pty[c,p-za-f,16][h,0-f,1] => makes all 256 pty*
+      #comment => ignore this line
+
+  For executable reduction reasons, the .preinit file is limited to 4 kB.
+*/

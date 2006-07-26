@@ -1,0 +1,505 @@
+#!/bin/bash
+#
+# /usr/sbin/pkg - Formilux source package manager - version 0.1.13 - 2003-02-02
+#
+# Copyright (C) 2001-2003 Benoit Dolez & Willy Tarreau
+#       mailto: benoit@ant-computing.com,willy@ant-computing.com
+#
+# This program is licenced under GPLv2 ( http://www.gnu.org/licenses/gpl.txt )
+
+# patch -p1 by default
+PATCH_LEVEL=1
+
+function logit {
+  echo "$*"
+  $*
+  return $?
+}
+
+function do_compile_only {
+  $FLXMAKE
+  return $?
+}
+
+function pre_prepack {
+  if [ "$UID" != "0" -a "$force" != "1" ]; then
+    echo "You must specify '--force' to install as non-root"
+    exit 1
+  fi
+  if [ -d `pwd`/.flxdisk ] ; then rm -rf `pwd`/.flxdisk ; fi
+}
+
+function post_prepack {
+  if [ -d $ROOTDIR/opt ] ; then
+    (cd $ROOTDIR/opt ; mkdir bin sbin lib )
+    (cd $ROOTDIR/opt ; find */bin  -type f -perm +111 -exec ln -s ../{} bin  \; -printf "ln -s ../%p $ROOTDIR/opt/bin\n" )
+    (cd $ROOTDIR/opt ; find */sbin -type f -perm +111 -exec ln -s ../{} sbin \; -printf "ln -s ../%p $ROOTDIR/opt/sbin\n" )
+    (cd $ROOTDIR/opt ; find */lib  -type f -perm +111 -exec ln -s ../{} lib  \; -printf "ln -s ../%p $ROOTDIR/opt/lib\n" )
+  fi
+}
+
+function do_compile {
+  do_config_only && do_compile_only
+}
+
+function do_build {
+  for i in clean compile prepack strip pack ; do
+    if declare -f pre_$i > /dev/null ; then ( pre_$i ) ; fi
+    if [ $? != 0 ] ; then break ; fi
+    if declare -f do_$i > /dev/null ; then ( do_$i ) ; fi
+    if [ $? != 0 ] ; then break ; fi
+    if declare -f post_$i > /dev/null ; then ( post_$i ) ; fi
+    if [ $? != 0 ] ; then break ; fi
+  done
+}
+
+function do_delpack {
+  if [ -d `pwd`/.flxdisk ] ; then rm -rf `pwd`/.flxdisk ; fi
+}
+
+function do_clean {
+  make distclean || make mrproper || make clean
+  ( do_delpack )
+}
+
+function do_edit {
+  echo "Editing $CFGFILE..."
+  vi $CFGFILE
+}
+
+function do_cat {
+  cat $CFGFILE
+}
+
+function do_patch {
+	find . -name '*.rej' -o -name '*~' | xargs rm -f
+
+	for i in $PATCH_LIST; do
+		patch -Np$PATCH_LEVEL < $PKGROOT/$i
+	done
+
+	if [ -z "`find . -name '*.rej'`" ]; then
+		find . -name '*~' | xargs rm -f
+	fi
+}
+
+function do_unpatch {
+	UNPATCH_LIST=""
+
+	find . -name '*.rej' -o -name '*~' | xargs rm -f
+
+	for i in $PATCH_LIST; do
+		UNPATCH_LIST="$i $UNPATCH_LIST"
+	done
+
+	for i in $UNPATCH_LIST; do
+		patch -RNp$PATCH_LEVEL < $PKGROOT/$i
+	done
+
+	if [ -z "`find . -name '*.rej'`" ]; then
+		find . -name '*~' | xargs rm -f
+	fi
+}
+
+function get_perl_depend {
+  filename=$1
+        DEP=`grep "^\(.*['{\"]\)*[ 	]*\(require\|use\) \+['\"]*[a-zA-Z][a-z:/A-Z0-9-_]*[; '\"]" $filename | \
+                sed -e 's/.*\(require\|use\) \+["'\'']\?\([^'\''" };]\+\)["'\'']\?/§§\2§§/g' \
+                    -e 's/§§\([^§]\+\)§§[^§]*/ \1/g' | \
+                sed 's@::@/@g'`
+        if [ "x$DEP" != "x" ] ; then
+          echo -n "$filename" >> $F
+          for dep in $DEP ; do
+            if [ "x${dep/*.*}" != "x" ] ; then
+              echo -n " $dep.pm" >> $F
+            else
+              echo -n " $dep" >> $F
+            fi
+          done
+          echo >> $F
+        fi
+}
+ 
+function do_pack {  
+    # use the file list when available
+    if [ "$FILE_LIST" ]; then
+	    do_pack_files
+	    return $?
+    fi
+
+  if [ ! -d $ROOTDIR ] ; then export ROOTDIR=`pwd` ; fi
+  cd $ROOTDIR
+
+##  ( find lib -type l -name "lib*.so*" | xargs rm -f ; \
+##  find usr/lib -type l -name "lib*.so*" | xargs rm -f ; \
+##  ldconfig -nr . ) > /dev/null 2>&1
+  ldconfig -nr . lib usr/lib > /dev/null 2>&1
+  find . ! -type l | xargs touch -m
+
+  F=$PKGROOT/$packver.dep
+
+  rm -rf $F
+  if [ -e $F.diff ] ; then cat $F.diff $F ; fi
+
+  echo -n "Creating $F ... "
+  touch $F
+  find . -type f -o -type l | while read ; do
+    case $REPLY in
+      *.pm|*.pl|*.ph)
+        get_perl_depend $REPLY
+       ;;
+      */man/man*/*.[0-9n])
+        if [ "${REPLY/*gz}" ] ; then
+          if [ -L $REPLY ] ; then
+            LINK=`readlink $REPLY`
+            rm $REPLY
+            ln -s $LINK.gz $REPLY.gz
+          else
+            gzip -f -9 $REPLY
+            chmod 644 $REPLY.gz
+          fi
+        fi
+        echo "$REPLY \$MAN" >> $F
+        ;;
+      */info/*.info|*/info/*.info-[0-9]*)
+        if [ "${REPLY/*gz}" ] ; then
+          gzip -f -9 $REPLY
+          chmod 644 $REPLY.gz
+        fi
+        echo "$REPLY \$INFO" >> $F
+        ;;
+      */sbin/*|*/bin/*|*/lib/*|*/libexec/*)
+        flr="`file $REPLY`"
+        case "$flr" in
+          *\ shell\ *)
+            echo "$REPLY `head -1 $REPLY| sed -e 's/^#\! *\([^ ]\+\).*/\1/'` \$SHELL">>$F
+            ;;
+          *perl\ commands*)
+            echo "$REPLY `head -1 $REPLY| sed -e 's/^#\! *\([^ ]\+\).*/\1/'` ">>$F
+            get_perl_depend $REPLY
+            ;;
+          *:\ symbolic\ link*)
+            echo "$REPLY `echo $flr | cut -f5 -d' '`" >> $F
+            ;;
+          *\ ELF\ 32-bit\ LSB*dynamically\ linked*)
+            echo "$REPLY `ldd $REPLY 2>/dev/null | grep -v 'statically linked' | awk '{print $1}' | tr '\012' ' '`" >> $F
+            ;;
+          *\ ELF\ 32-bit\ LSB*shared\ object*)
+            echo "$REPLY `ldd $REPLY 2>/dev/null | grep -v 'statically linked' | awk '{print $1}' | tr '\012' ' '`" >> $F
+            ;;
+        esac
+        ;;
+    esac
+  done
+  echo "done."
+
+  echo -n "Creating $PKGROOT/$packver.lst ... "
+  (find . ! -type d -o -empty | cut -c3-| xargs flx sign --ignore-dot --no-depth > $PKGROOT/$packver.lst) > /dev/null 2>&1
+  echo "done."
+
+  F=$PKGROOT/$packver.$PKGSUFF
+  echo -n "Creating $F ... "
+  # we want everything, and directories only if they're empty. All this without './'
+  # we shouldn't get an empty line since . should contain at least what we want to tar !
+  find . ! -type d -o -empty | cut -c3- | tar -T - -cf - | gzip -9 >$F 2>/dev/null
+  echo "done."
+
+  if [ -n "$CFGFILE" ]; then
+     F=$PKGROOT/$packver.$CFGSUFF
+     echo -n "Creating $F ... "
+     if [ "$F" != "$CFGFILE" ]; then cp -f "$CFGFILE" "$F"; echo "done." ; else echo "up to date."; fi
+  fi
+  
+}
+
+function do_unpack {  
+  mkdir -p $ROOTDIR
+  cd $ROOTDIR
+
+  F=$PKGROOT/$packver.$PKGSUFF
+  echo -n "Extracting $F into $ROOTDIR ... "
+  tar zUxpf $F >/dev/null 2>&1
+  echo "done."
+}
+
+# same as pack, except that it uses files in the current directory as the root
+# entries, and that no strip, link nor compression is performed.
+# Only entries listed in the file pointed to by variable FILE_LIST find their
+# way to the archive.
+function do_pack_files {  
+##  ( find lib -type l -name "lib*.so*" | xargs rm -f ; \
+##  find usr/lib -type l -name "lib*.so*" | xargs rm -f ; \
+##  ldconfig -nr . ) > /dev/null 2>&1
+  find . ! -type l | xargs touch -m
+
+  F=$PKGROOT/$packver.dep
+
+  # absurde ? : rm puis cat !
+  rm -rf $F
+  if [ -e $F.diff ] ; then cat $F.diff $F ; fi
+
+  echo -n "Creating $F ... "
+  touch $F
+  find . -type f -o -type l | while read ; do
+    case $REPLY in
+      *.pm|*.pl|*.ph)
+        get_perl_depend $REPLY
+       ;;
+      */man/man*/*.[0-9n])
+        echo "$REPLY \$MAN" >> $F
+        ;;
+      */info/*.info|*/info/*.info-[0-9]*)
+        echo "$REPLY \$INFO" >> $F
+        ;;
+      */sbin/*|*/bin/*|*/lib/*|*/libexec/*)
+        flr="`file $REPLY`"
+        case "$flr" in
+          *\ shell\ *)
+            echo "$REPLY `head -1 $REPLY| sed -e 's/^#\! *\([^ ]\+\).*/\1/'` \$SHELL">>$F
+            ;;
+          *perl\ commands*)
+            echo "$REPLY `head -1 $REPLY| sed -e 's/^#\! *\([^ ]\+\).*/\1/'` ">>$F
+            get_perl_depend $REPLY
+            ;;
+          *:\ symbolic\ link*)
+            echo "$REPLY `echo $flr | cut -f5 -d' '`" >> $F
+            ;;
+          *\ ELF\ 32-bit\ LSB*dynamically\ linked*)
+            echo "$REPLY `ldd $REPLY 2>/dev/null | grep -v 'statically linked' | awk '{print $1}' | tr '\012' ' '`" >> $F
+            ;;
+          *\ ELF\ 32-bit\ LSB*shared\ object*)
+            echo "$REPLY `ldd $REPLY 2>/dev/null | grep -v 'statically linked' | awk '{print $1}' | tr '\012' ' '`" >> $F
+            ;;
+        esac
+        ;;
+    esac
+  done
+  echo "done."
+
+  echo -n "Creating $PKGROOT/$packver.lst ... "
+  (flx sign --no-depth --ignore-dot `cut -f1 -d' ' $FILE_LIST` > $PKGROOT/$packver.lst) > /dev/null 2>&1
+  echo "done."
+
+  F=$PKGROOT/$packver.$PKGSUFF
+  echo -n "Creating $F ... "
+
+  # we want everything, and directories only if they're empty. All this without './'
+  # we shouldn't get an empty line since . should contain at least what we want to tar !
+  cut -f1 -d' ' $FILE_LIST | tar -T - -cf - | gzip -9 >$F 2>/dev/null
+  echo "done."
+
+  if [ -n "$CFGFILE" ]; then
+     F=$PKGROOT/$packver.$CFGSUFF
+     echo -n "Creating $F ... "
+     if [ "$F" != "$CFGFILE" ]; then cp -f "$CFGFILE" "$F"; echo "done." ; else echo "up to date."; fi
+  fi
+  
+}
+
+function do_strip {
+  if [ ! -d $ROOTDIR ] ; then export ROOTDIR=`pwd` ; fi
+  #find $ROOTDIR/. -type f | xargs file | grep ":.*executable.*not stripped" | cut -f1 -d: | xargs strip -x --strip-unneeded -R .note -R .comment > /dev/null 2>&1 
+  # allow executable and shared (.so), but not relocatable (.o), both stripped or not stripped
+  find $ROOTDIR/. -type f | xargs file | grep ":.*ELF.*\(executable\|\shared\).*stripped" | cut -f1 -d: | xargs strip -x --strip-unneeded -R .note -R .comment > /dev/null 2>&1 
+} 
+
+function pre_pack {
+  ( do_strip )
+}
+
+function usage {
+  echo "Usage: pkg <action>"
+  echo " action is one of :"
+  echo "   help    : display this help."
+  echo "   info    : get information on current package."
+  echo "   newpkg  : build a more recent .pkg script from an old one."
+  echo "   cat     : display last .pkg file."
+  echo "   edit    : edit last .pkg file."
+  echo "   patch   : apply a list of patches to the directory prior to compile."
+  echo "   unpatch : revert a list of patches to the directory."
+  echo "   compile : do_compile=do_config_only+do_compile_only in .pkg script ($CFGROOT)"
+  echo "   prepack : execute do_prepack in .pkg script ($CFGROOT)"
+  echo "   strip   : strip binaries in temporary directory"
+  echo "   pack    : strip binaries, then package in $PKGROOT"
+  echo "   delpack : remove temporary directory"
+  echo "   clean   : execute 'make clean' and remove temporary directory."
+  echo "   build   : execute clean compile prepack pack."
+  echo "   unpack  : extract package into temporary directory"
+  echo "Variables are :"
+  echo "CFGROOT : directory for .pkg, .diff, <$CFGROOT>"
+  echo "CFGFILE : force to use of a .pkg, <$CFGFILE>"
+  echo "PKGROOT : directory for .lst, .tgz and .dep, <$PKGROOT>"
+  echo "ROOTDIR : base directory for package (not source), <$ROOTDIR>"
+  echo "FLXARCH : architecture for package name, <$FLXARCH>"
+  echo "KERNDIR : base directory for package (not source), <$KERNDIR>"
+  echo "DISTVER : build version (flx.1)"
+  exit 1
+}
+
+function do_help {
+	usage
+}
+
+function pre_info {
+  echo "Information for package $pack: "
+
+  echo "   Package version : $PKGVER (\$PKGVER)"
+  echo "   Distrib version : $DISTVER (\$DISTVER)"
+  echo -n "   Config. file : "
+  if [ -e $CFGFILE ]; then
+     echo "$CFGFILE"
+  else
+     echo "none found."
+  fi
+  echo "   Package file : $PKGROOT/$packver.$PKGSUFF"
+  echo -n "   Package size : "
+  if [ -e $PKGROOT/$packver.$PKGSUFF ]; then
+     echo "`du -b $PKGROOT/$packver.$PKGSUFF|cut -f1` bytes."
+  else
+     echo "does not exist yet."
+  fi
+  if [ "$PATCH_LIST" ]; then
+     echo "   Patches list : $PATCH_LIST"
+  fi
+}
+
+function do_newpkg {
+  if [ -n "$CFGFILE" ]; then
+     F=$PKGROOT/$packver.$CFGSUFF
+     echo -n "Creating $F ... "
+     if [ "$F" != "$CFGFILE" ]; then cp -f "$CFGFILE" "$F"; echo "done." ; else echo "up to date."; fi
+  fi
+}
+
+# setting fixed vars
+if [ -z "$KERNDIR" ] ; then KERNDIR="/usr/src/linux" ; fi
+if [ -z "$CFGROOT" ] ; then CFGROOT="/var/install" ; fi
+if [ -z "$PKGROOT" ] ; then PKGROOT="/var/install" ; fi
+#if [ -z "$DISTVER" ] ; then DISTVER="flx.1" ; fi
+if [ "$FLXARCH" = "" ]; then FLXARCH=`uname -m` ; fi
+
+PKGSUFF="tgz"
+CFGSUFF="pkg"
+exe=`basename $0`
+
+# check for action type
+echo $exe | grep -q "^pkg" 
+if [ $? = 0 -a "$exe" != "pkg" ] ; then
+  type=`echo $exe | cut -c4-`
+else
+  type=$1
+fi
+
+# look for parameters
+if [ "$type" = "$1" -a "${type##-*}" ] ; then shift ; fi
+case $1 in 
+  --force ) force=1; shift ;;
+  --help ) usage ;;
+  --source) type=source_only ;;
+  -* ) shift ;;
+esac
+
+if [ "$type" = "" ] ; then
+  usage ; 
+fi
+
+# execute action
+if [ "$type" = "find" ] ; then
+  for i in * ; do 
+    pkgf=`grep "/$i\$" $CFGROOT/*.$CFGSUFF | cut -f1 -d: | tr '\012' ' '`
+    echo "$i: $pkgf"
+  done
+elif [ "$type" != "source_only" ] ; then
+ ARGV=$* 
+
+ # look for package name from directory name
+ pack=`pwd`
+ pack=`basename $pack | sed -e 's/[-_][0-9].*$//'`
+
+ # for package
+  if [ -n "$pack" ] ; then 
+   
+    packver=`pwd` 
+    packver=`basename $packver`
+
+    if [ -z "$DISTVER" ]; then
+        if echo $packver | grep -q -- "-flx\." ; then
+	   DISTVER=`echo $packver|sed 's/\(.*-\)\(flx.[0-9]\+\)\(.*\)/\2/'`
+	fi
+    fi
+
+    # source configuration
+    if [ -z "$ROOTDIR" ] ; then ROOTDIR=`pwd`/.flxdisk ; fi
+    if [ -n "$CFGFILE" ]; then
+       . $CFGFILE
+    else
+       CFGFILE=`find $CFGROOT/ $PKGROOT/ -name "$pack[-_]*-${DISTVER:-*}-$FLXARCH.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`
+       CFGFILE=${CFGFILE:-`find $CFGROOT/ $PKGROOT/ -name "$pack[-_]*-${DISTVER:-*}-*.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
+       CFGFILE=${CFGFILE:-`find $CFGROOT/ $PKGROOT/ -name "$pack[-_]*.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
+       CFGFILE=${CFGFILE:-`find $CFGROOT/ $PKGROOT/ -name "$pack.$CFGSUFF"|sed -e "s/\.$CFGSUFF\$//"|sort|tail -1`}
+       if [ -n "$CFGFILE" ]; then
+          CFGFILE=$CFGFILE.$CFGSUFF
+          . $CFGFILE
+       fi
+    fi
+
+    if [ -z "$DISTVER" ]; then
+	if echo $CFGFILE | grep -q -- "-flx\." ; then
+           DISTVER=`echo $CFGFILE|sed 's/\(.*-\)\(flx.[0-9]\+\)\(.*\)/\2/'`
+        else
+	   DISTVER='flx.1'
+	fi
+    fi
+
+    echo $packver | grep -q -- "-flx\."
+    if [ $? != 0 ] ; then
+	packver=$packver-$DISTVER
+    fi
+
+    echo $packver | grep -q -- "-$FLXARCH\$" 
+    if [ $? != 0 ] ; then packver=$packver-$FLXARCH ; fi
+
+    prefix=${packver%%[._-][0-9]*} 
+    suffix=${packver#$prefix[._-]} 
+    PKGVER=${suffix%-flx*}
+    PKGRADIX=$prefix
+    #echo "packver=$packver suffix=$suffix PKGVER=$PKGVER"
+    if [ -z "$DISTVER" ]; then
+       DISTVER=${suffix#$PKGVER-}
+       if [ "$DISTVER" = "$PKGVER" ]; then
+	  DISTVER="flx.1"
+       else
+          DISTVER=${DISTVER%-*}
+       fi
+    fi
+
+    case "$FLXARCH" in
+        i686) arch=i686 cpu=i686 ;;
+        i486) arch=i486 cpu=i486 ;;
+        i386) arch=i386 cpu=i386 ;;
+        *)    arch=i586 cpu=i686 ;;
+    esac
+
+    if [ -z "$FLXMAKE" ]; then
+        FLXMAKE=make
+    fi
+
+    
+    if [ -z "$PATCH_LIST" ]; then
+	PATCH_LIST=${CFGFILE%%.$CFGSUFF}.diff
+	if [ ! -e "$PATCH_LIST" ]; then
+	    unset PATCH_LIST
+	fi
+    fi
+
+    export DISTVER PKGRADIX PKGVER FLXMAKE PATCH_LIST FILE_LIST
+ 
+    if declare -f pre_$type > /dev/null ; then ( pre_$type ) ; fi
+    if [ $? != 0 ] ; then exit ; fi   
+    if declare -f do_$type > /dev/null ; then ( do_$type ) ; fi
+    if [ $? != 0 ] ; then exit ; fi
+    if declare -f post_$type > /dev/null ; then ( post_$type ) ; fi
+
+  fi
+ # done
+fi

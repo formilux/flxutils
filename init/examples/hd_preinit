@@ -1,0 +1,60 @@
+#!/sbin/init <
+# This .preinit is to be copied onto a hard disk to be used as-is.
+# Don't forget to change the links at the bottom !
+# 
+# mem, kmem, null, zero, random, urandom, tty0, tty, console, ptmx, initctl
+# full, fd
+mt /proc /proc proc rw
+
+# we first try to mount /tmp as a tmpfs, next /var if it fails.
+mt /tmp /tmp tmpfs rw
+|mt /var /var tmpfs rw mode=755
+md /var/tmp 1777
+md /var/run 755
+md /dev/pts 755
+
+bl 0600 0 0 3 0 hd[c,ab,64][I,0-16,1]
+bl 0600 0 0 22 0 hd[c,cd,64][I,0-16,1]
+bl 0600 0 0 33 0 hd[c,ef,64][I,0-16,1]
+bl 0600 0 0 8 0 sd[c,a-h,16][I,0-15,1]
+md /dev/rd 755		# DAC960 raid disks (majors 48-55)
+bl 0600 0 0 48 0 rd/c0d[i,0-31,8]
+bl 0600 0 0 48 1 rd/c0d[i,0-31,8]p[i,1-7,1]
+md /dev/ida 755		# Compaq raid disks (majors 72-79)
+bl 0600 0 0 72 0 ida/c0d[i,0-15,16]
+bl 0600 0 0 72 1 ida/c0d[i,0-15,16]p[i,1-15,1]
+bl 0600 0 0 11 0 sr[i,0-16,1]
+ch 0600 0 0 9 0 st[i,0-15,1]
+bl 0600 0 0 9 0 md[i,0-15,1]
+bl 0600 0 0 2 0 fd0
+bl 0600 0 0 2 28 fd0u1440
+ch 0600 0 5 2 0 pty[c,p-za-f,16][h,0-f,1]
+ch 0600 0 5 3 0 tty[c,p-za-f,16][h,0-f,1]
+ch 0600 0 5 4 1 tty[i,1-12,1]
+bl 0600 0 0 7 0 loop[i,0-9,1]
+bl 0600 0 0 1 0 ram[i,0-9,1]
+ch 0600 0 5 4 64 ttyS[i,0-9,1]
+bl 0400 0 0 1 250 initrd
+ch 0600 0 3 10 1 psaux
+ch 0600 0 0 10 144 nvram
+ch 0600 0 0 10 130 watchdog
+ch 0600 0 0 14 0 mixer
+ch 0600 0 0 14 3 dsp
+md /dev/input 755
+ch 0600 0 0 13 63 input/mice
+
+ln psaux /dev/mouse
+ln hdc /dev/cdrom
+
+md /dev/fs 755
+
+# The partitions are referenced here, so that
+# lilo.conf and fstab only use links.
+ln hda  /dev/mbr
+ln hda1 /dev/boot
+ln hda2 /dev/swap
+ln hda3 /dev/root
+ln ../hda6 /dev/fs/var
+
+in /sbin/init-sysv
+

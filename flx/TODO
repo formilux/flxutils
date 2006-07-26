@@ -1,0 +1,14 @@
+2002/06/18: 
+  completly change
+
+2002/01/20:
+  - '.' and '..' resolve?
+
+2001/12/24:
+  - need to correct all orthographic mistakes :-)
+  - make the binary capable to tell about its version
+  - clean the makefile and remove unused files
+
+2001/10/29:
+- Need a complet documentation and manual
+

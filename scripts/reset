@@ -1,0 +1,3 @@
+#!/bin/sh
+echo -n '[H[J[10m[27m[24mc[1;48r'
+exec stty sane

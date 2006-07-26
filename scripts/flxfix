@@ -1,0 +1,85 @@
+#!/bin/bash
+
+# flxfix - 2003/01/31 - Willy Tarreau <willy@ant-computing.com>
+# Generates a shell script from a difference between two trees so that the last
+# one becomes as close to the first one as possible.
+# usage:
+#   flx check <reference> <tobefixed> | flxfix [ -R ] > fix.sh
+#   Use -R to swap the two trees
+
+# usage : fixperms $perm $uid $gid $date $name
+function fixperms {
+   echo touch -t \"`date -d "Jan 1 00:00:$4 UTC 1970" +"%Y%m%d%H%M.%S" `\" $5
+   echo chown $2:$3 $5
+   echo chmod $1 $5
+}
+
+mustswap=0
+if [ "x$1" = "x-R" ]; then
+   mustswap=1
+fi
+
+while read chg type perm uid gid size sign date name link rest; do
+   if [ $mustswap = 1 ]; then
+      chg=`echo $chg | tr '<>+\-' '><\-+'`
+   fi
+
+   if [ "x$rest" != "x" -o "x$type" != "xl" -a "x$link" != "x" ]; then
+	echo "# Ignoring too long line : $REPLY"
+	continue
+   elif [ "x$name" = "x" -o "x$type" = "xl" -a "x$link" = "x" ]; then
+	echo "# Ignoring too short line : $REPLY"
+	continue
+   fi
+
+   if [ x$chg = x+ ]; then
+      # new entry which wasn't in <reference>, should be removed
+      if [ x$type = xd ]; then
+         # theorically, we should use rm -rf to suppress all children
+         echo rmdir $name
+      else
+         echo rm -f $name
+      fi
+   elif [ x$chg = x- ]; then
+      # missing entry, sometimes we can rebuild them
+      if [ x$type = xl ]; then
+         # we'll rebuild a symbolic link
+         echo ln -s $link $name
+         echo chown -h $uid:$gid $name
+      elif [ x$type = xd ]; then
+         # we'll rebuild a directory
+         echo mkdir -p $name
+         fixperms $perm $uid $gid $date $name
+      elif [ x$type = x- ]; then
+         if [ x$size = x0 ]; then
+            # we can also rebuild files, only if they are empty
+            fixperms $perm $uid $gid $date $name
+         else
+            echo "echo \"Cannot create missing file $name ($size bytes).\""
+         fi
+      elif [ x$type = xc -o x$type = xb -o x$type = xf ]; then
+         # we'll rebuild nodes
+         echo mknod $name ${type/f/p} ${size/,/ }
+         fixperms $perm $uid $gid $date $name
+      else
+         echo "echo \"Cannot fix $name, unsupported file type : $type\""
+      fi
+   elif [ x$chg = x\< ]; then
+      # entry has changed
+      if [ x$type = xl ]; then
+         # we'll destroy and rebuild a symbolic link
+         echo rm -f $name
+         echo ln -s $link $name
+         echo chown -h $uid:$gid $name
+      elif [ x$type = xc -o x$type = xb -o x$type = xf ]; then
+         # we'll destroy and rebuild nodes
+         echo rm -f $name
+         echo mknod $name ${type/f/p} ${size/,/ }
+         fixperms $perm $uid $gid $date $name
+      else
+         # in other cases, we only try to fix perms
+         fixperms $perm $uid $gid $date $name
+      fi
+   fi
+done
+
