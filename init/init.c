@@ -93,10 +93,19 @@ lo      l </dev/loopX> <file>
     The commands may be prefixed with a '|' or '&', in which case, they will be
     executed only if the previous command failed (|) or succeeded (&).
 
+    Each command argument may reference an environment variable and an optional default
+    value. Syntax is similar to the Bourne shell with braces :  ${var} and ${var-default}.
+    The default value will be used if the variable is not set, not if it's empty. An unset
+    variable with no default value will return an empty string.
+
+    The variables are not evaluated within quotes, but quotes can stop before the '$' sign
+    and start again after the brace. 
+
     Example :
       ln hda3 /dev/disk  => symlinks /dev/disk to hda3
       md /var/tmp 1777	=> creates a directory /var/tmp with mode 1777
       mt /dev/hda1 /boot ext2 => attempts to mount /dev/hda1 read-only under /boot.
+      mt /dev/${flash-boot} /boot ${fs-ext2} => attempts to mount /dev/$flash read-only under /boot.
       |mt /dev/hda1(3:1) /boot ext2 => only if the previous command failed, creates /dev/hda1 with major 3, minor 1 and mounts it under /boot
       in /sbin/init-std  => the following init will be this /sbin/init-std (31 chars max)
       ex /sbin/initramdisk /dev/ram6 1200 => executes /sbin/initramdisk with these args and waits for its completion
@@ -321,6 +330,15 @@ enum {
 /* counts from TOK_LN to TOK_DOT */
 #define NB_TOKENS	25
 
+/* possible states for variable parsing */
+enum {
+	VAR_NONE = 0,
+	VAR_DOLLAR,
+	VAR_OBRACE,
+	VAR_DEFAULT,
+	VAR_CBRACE,
+};
+
 /* this contains all two-chars command, 1-char commands, followed by a token
  * number.
  */
@@ -520,7 +538,9 @@ char *find_arg(char *arg) {
 
 /*
  * looks for the last assignment of variable 'var=' in 'envp'.
- * the value found is returned (or NULL if not found).
+ * the value found is returned (or NULL if not found). Note
+ * that if the variable name does not end with an '=', then it
+ * will be implicitly checked.
  * if 'remove' is not zero, the assignment is removed afterwards.
  * eg: init=my_getenv(envp, "init=", 1);
  */
@@ -530,9 +550,13 @@ char *my_getenv(char **envp, char *var, const int remove) {
 
     last = NULL;
     namelen = strlen(var);
+    if (!namelen || !envp)
+	    return NULL;
+
     while (*envp != NULL) {
 	//printf("comparing <%s> against <%s> for %d chars\n", *envp, var, namelen);
-	if (!strncmp(*envp, var, namelen))
+	if (strncmp(*envp, var, namelen) == 0 &&
+	    ((var[namelen-1] == '=') || envp[0][namelen] == '='))
 	    last = envp;
 	envp++;
     }
@@ -542,6 +566,8 @@ char *my_getenv(char **envp, char *var, const int remove) {
 	return NULL;
     } else {
 	char *ret = (*last) + namelen;
+	if (var[namelen-1] != '=')
+		ret++;
 	if (remove)
 	    while (*last != NULL) {
 		//printf("moving <%s> over <%s>\n", *(last+1),*last);
@@ -576,8 +602,11 @@ static inline int read_cfg(char *cfg_file) {
  * returned as the result of this function, or TOK_UNK if none matches, or
  * TOK_EOF if nothing left. All args are copied into <cfg_args> as an array
  * of pointers.  Maximum line length is 256 chars and maximum args number is 15.
+ * <bufend> must point to the first non-addressable byte of the buffer so that
+ * the function can insert data if required due to variables resolving. If
+ * <envp> is not NULL, variables may be looked up there.
  */
-static int parse_cfg(char **cfg_data) {
+static int parse_cfg(char **cfg_data, char *bufend, char **envp) {
     int nbargs;
     int token;
     int cond;
@@ -639,7 +668,9 @@ static int parse_cfg(char **cfg_data) {
 	    cfg_args[nbargs++] = p;
 
 	for (; *p && (nbargs < MAX_CFG_ARGS - 1); nbargs++) {
-	    int backslash = 0, quote = 0;
+		int backslash = 0, quote = 0, var_state = VAR_NONE;
+		char *dollar_ptr, *name_beg, *name_end;
+		char *brace_end, *def_beg, *def_end, *repl;
 
 	    cfg_args[nbargs] = p;
 
@@ -655,14 +686,111 @@ static int parse_cfg(char **cfg_data) {
 		    memmove(p - 1, p, cfg_line - p);
 		} else {
 		    backslash = (*p == '\\');
+
 		    if (*p == '"') {
 			memmove(p, p + 1, cfg_line - p - 1);
 			quote = !quote;
+			continue;
 		    }
-		    else
-			p++;
+
+		    if (quote) {
+			    p++;
+			    continue;
+		    }
+
+		    /* variables are not evaluated within quotes for now */
+		    switch (var_state) {
+		    case VAR_NONE:
+			    if (*p != '$')
+				    break;
+			    dollar_ptr = p;
+			    var_state = VAR_DOLLAR;
+			    name_beg = name_end = def_beg = def_end = brace_end = NULL;
+			    break;
+		    case VAR_DOLLAR:
+			    if (*p != '{') {
+				    var_state = VAR_NONE;
+				    dollar_ptr = NULL;
+			    }
+			    name_beg = p + 1;
+			    var_state = VAR_OBRACE;
+			    break;
+		    case VAR_OBRACE:
+			    if (*p == '-') {
+				    var_state = VAR_DEFAULT;
+				    name_end  = p;
+				    def_beg = p + 1;
+			    }
+			    else if (*p == '}') {
+				    var_state = VAR_CBRACE;
+				    name_end  = p;
+				    brace_end = p + 1;
+			    }
+			    break;
+		    case VAR_DEFAULT:
+			    if (*p == '}') {
+				    var_state = VAR_CBRACE;
+				    def_end  = p;
+				    brace_end = p + 1;
+			    }
+			    break;
+		    }
+
+		    if (var_state == VAR_CBRACE) {
+			    /* here we have to do everything */
+			    var_state = VAR_NONE;
+
+			    *name_end = 0;
+			    repl = my_getenv(envp, name_beg, 0); // supports envp==NULL and name==NULL
+
+			    if (!repl) {
+				    /* easy part: variable not found, we use the
+				     * default value. It will always be shorter
+				     * than the expression because it's contained
+				     * in it.
+				     */
+				    int ofs;
+
+				    if (def_end == def_beg) {
+					    memmove(dollar_ptr, brace_end, bufend - brace_end);
+					    ofs = brace_end - dollar_ptr;
+					    p -= ofs;
+					    cfg_line -= ofs;
+					    *cfg_data = cfg_line;
+				    } else {
+					    memmove(dollar_ptr, def_beg, def_end - def_beg);
+					    memmove(dollar_ptr + (def_end - def_beg), brace_end, bufend - brace_end);
+					    ofs = (def_beg - dollar_ptr) + (brace_end - def_end);
+					    p -= ofs;
+					    cfg_line -= ofs;
+					    *cfg_data = cfg_line;
+				    }
+			    } else {
+				    /* complicated part, we have to move the tail
+				     * left or right, the right size for what we
+				     * have to replace.
+				     */
+				    int l = strlen(repl);
+				    int ofs = l - (brace_end - dollar_ptr); /* <0: reduce, >0: increase */
+
+				    if (ofs + brace_end > bufend) { // too large, truncate the value.
+					    l  -= (ofs + brace_end) - bufend;
+					    ofs = bufend - brace_end;
+				    }
+
+				    memmove(dollar_ptr + l, brace_end, (bufend - brace_end) - ((ofs > 0)?ofs:0));
+				    memcpy(dollar_ptr, repl, l);
+
+				    p += ofs;
+				    cfg_line += ofs;
+				    *cfg_data = cfg_line;
+				    //printf("  OK: -->%s<--, l=%d, ofs=%d\n", dollar_ptr, l, ofs);
+			    }
+		    }
+
+		    p++;
 		}
-	    } while (*p && (backslash || quote || (*p != ' ' && *p != '\t')));
+	    } while (*p && (backslash || quote || var_state || (*p != ' ' && *p != '\t')));
 	    if (*p) {
 		*p = 0;
 		do p++; while (*p == ' ' || *p == '\t');
@@ -1243,7 +1371,7 @@ int main(int argc, char **argv, char **envp) {
 		len = read(0,  cmd_line, sizeof(cmd_line)-1);
 		if (len > 0) {
 		    cmd_line[len] = 0;
-		    token = parse_cfg(&cmd_ptr);
+		    token = parse_cfg(&cmd_ptr, cmd_line + sizeof(cmd_line), envp);
 		    if (token == TOK_EOF) /* empty line */
 			continue;
 		} else {
@@ -1261,7 +1389,7 @@ int main(int argc, char **argv, char **envp) {
 	    } /* end of kbd */
 
 	    if (cmd_input == INPUT_FILE) {
-		token = parse_cfg(&cfg_line);
+		    token = parse_cfg(&cfg_line,  cfg_data + sizeof(cfg_data), envp);
 		if (token == TOK_EOF || token == TOK_DOT)
 		    break;
 	    }
