@@ -1578,21 +1578,22 @@ int main(int argc, char **argv, char **envp) {
 		/* fall through TOK_RX */
 	    case TOK_RX: {
 		/* R dir cmd [cfg_args] : execute cmd with cfg_args, chrooted to dir */
-		char **exec_args, *exec_dir;
 		int res;
-
-		exec_args = cfg_args + 1;
-		if (token == TOK_EX) {
-			exec_dir = (char *)root_dir;
-		}
-		else {
-			exec_dir = cfg_args[1];
-			exec_args++;
-		}
 
 		res = fork();
 		if (res == 0) {
-		    chroot(exec_dir);
+		    char **exec_args;
+
+		    setsid();
+		    ioctl(0, TIOCSCTTY, 1); // become the controlling tty, allow Ctrl-C
+
+		    exec_args = cfg_args + 1;
+		    if (token == TOK_RX) {
+			    chroot(*exec_args);
+			    exec_args++;
+		    }
+
+		    /* FIXME: no chdir("/") ??? */
 		    execve(exec_args[0], exec_args, envp);
 		    print("<E>xec(child) : execve() failed\n");
 		    return 1;
