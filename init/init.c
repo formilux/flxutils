@@ -1711,20 +1711,54 @@ int main(int argc, char **argv, char **envp) {
 		res = fork();
 		if (res == 0) {
 		    char **exec_args;
-
+		    /* OK, here's the problem :
+		     * PID 1 has its own session ID 0, and we cannot change it.
+		     * It cannot either set controlling TTYs and such. So we have
+		     * to create a new session. But data written from another session
+		     * does get flushed when the session is closed. To solve this
+		     * problem, we have to create 2 processes for each fork(), one
+		     * to do the real work, and the other one to maintain the session
+		     * open, and to wait for the flush (nearly immediate).
+		     */
 		    setsid();
+		    setpgrp();
+		    tcsetpgrp(0, getpgrp());
 		    ioctl(0, TIOCSCTTY, 1); // become the controlling tty, allow Ctrl-C
 
 		    exec_args = cfg_args + 1;
 		    if (token == TOK_RX) {
 			    chroot(*exec_args);
+			    /* FIXME: no chdir("/") ??? */
 			    exec_args++;
 		    }
 
-		    /* FIXME: no chdir("/") ??? */
-		    execve(exec_args[0], exec_args, envp);
-		    print("<E>xec(child) : execve() failed\n");
-		    return 1;
+		    res = fork();
+		    if (res == 0) {
+			    execve(exec_args[0], exec_args, envp);
+			    print("<E>xec(child) : execve() failed\n");
+			    //printf("after execve(%s)!\n", exec_args[0]);
+			    exit(1);
+		    }
+		    else if (res > 0) {
+			    int ret, rem;
+			    int status;
+
+			    ret = waitpid(res, &status, 0);
+			    //printf("waitpid returned %d,0x%08x\n", ret, status);
+
+			    /* wait for the stdout queue to flush */
+			    while (1) {
+				    if (ioctl(0, TIOCOUTQ, &rem) < 0)
+					    break;
+				    if (rem == 0)
+					    break;
+				    sched_yield();
+			    }
+
+			    exit(((ret == -1) || !WIFEXITED(status)) ?
+				 1 : WEXITSTATUS(status));
+		    }
+		    exit(1);
 		}
 		else if (res > 0) {
 		    int ret;
@@ -1947,3 +1981,4 @@ int main(int argc, char **argv, char **envp) {
     }
     return 0;
 }
+
