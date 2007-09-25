@@ -1,3 +1,10 @@
+2007/09/24
+ - updated ifenslave to 1.1.0. The "ifenslave" symlink which pointed to 1.0.12
+   was replaced by the new binary in order to provide smooth upgrade.
+ - init now sets a controlling TTY in order to make Ctrl-C work.
+ - init now supports variables in the configuration file. They are referenced
+   as ${variable} or ${variable-default}
+
 2003/07/22
  - updated ifenslave to 1.0.12 to be compatible with bonding after 2.4.21
  - added 'nosuid,nodev' by default for tmp in mkinstall2

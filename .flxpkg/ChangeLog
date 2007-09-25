@@ -1,3 +1,13 @@
+2007/09/25 10:01  willy@wtap
+
+	* released flxutils-0.1.30-flx0.2
+	* updated ifenslave to 1.1.0. The "ifenslave" symlink which
+	  used to point to 1.0.12 was replaced by the new binary in
+	  order to provide smooth upgrade.
+	* init now sets a controlling TTY in order to make Ctrl-C work.
+	* init now supports variables in the configuration file. They
+	  are referenced as ${variable} or ${variable-default}.
+
 2005/04/10 22:56  willy@pcw
 
 	* released flxutils-0.1.29-flx0.1
