@@ -1577,15 +1577,12 @@ int main(int argc, char **argv, char **envp) {
 		    goto finish_cmd;
 
 		if (cmd_input == INPUT_KBD) {
-		    msg = (char *)msg_err_console;
-		    len = sizeof(msg_err_console) - 1;
+		    ret_msg = (char *)msg_err_console;
 		} else {
-		    msg = (char *)msg_ent_console;
-		    len = sizeof(msg_ent_console) - 1;
+		    ret_msg = (char *)msg_ent_console;
 		    kbd_level = brace_level;
 		}
 		error = context[brace_level].error;
-		write(1, msg, len);
 		cmd_input = INPUT_KBD;
 		continue;
 	    }
