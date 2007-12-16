@@ -315,6 +315,7 @@ enum {
     TOK_UM,	/* um : umount a filesystem */
     TOK_LO,	/* lo : losetup */
     TOK_EC,	/* ec : echo */
+    TOK_EQ,	/* eq : compare two strings */
     TOK_TE,	/* te : test an environment variable */
     TOK_RD,	/* rd : read a command from the console */
     TOK_RM,	/* rm : remove files */
@@ -332,7 +333,7 @@ enum {
 };
 
 /* counts from TOK_LN to TOK_DOT */
-#define NB_TOKENS	29
+#define NB_TOKENS	30
 
 /* possible states for variable parsing */
 enum {
@@ -372,6 +373,7 @@ static const  __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     "um", 'O', 1,	/* TOK_UM */
     "lo", 'l', 2,	/* TOK_LO */
     "ec",   0, 0,	/* TOK_EC */
+    "eq",   0, 2,	/* TOK_EQ */
     "te",   0, 1,	/* TOK_TE */
     "rd",   0, 0,	/* TOK_RD */
     "rm",   0, 1,	/* TOK_RM */
@@ -1527,6 +1529,12 @@ int main(int argc, char **argv, char **envp) {
 		    env++;
 		}
 		error = (*env == NULL);
+		goto finish_cmd;
+	    } else if (token == TOK_EQ) {
+		/* eq str1 str2 : compare two strings (possibly containing variables).
+		 * The result is OK if identical, otherwise NOK.
+		 */
+		error = (strcmp(cfg_args[1], cfg_args[2]) != 0);
 		goto finish_cmd;
 	    }
 
