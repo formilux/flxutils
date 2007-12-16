@@ -306,6 +306,7 @@ enum {
     TOK_CH,	/* ch : make char devices */
     TOK_FI,	/* fi : make a fifo */
     TOK_MA,	/* ma : set umask */
+    TOK_CA,	/* ca : cat file */
     TOK_CD,	/* cd : chdir */
     TOK_CP,	/* cp : copy file */
     TOK_CR,	/* cr : chroot (without chdir) */
@@ -334,7 +335,7 @@ enum {
 };
 
 /* counts from TOK_LN to TOK_DOT */
-#define NB_TOKENS	31
+#define NB_TOKENS	32
 
 /* possible states for variable parsing */
 enum {
@@ -365,6 +366,7 @@ static const  __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     "ch", 'C', 6,	/* TOK_CH */
     "fi", 'F', 4,	/* TOK_FI */
     "ma", 'U', 1,	/* TOK_MA */
+    "ca",   0, 1,	/* TOK_CA */
     "cd",   0, 1,	/* TOK_CD */
     "cp",   0, 2,	/* TOK_CP */
     "cr",   0, 1,	/* TOK_CR */
@@ -1603,7 +1605,9 @@ int main(int argc, char **argv, char **envp) {
 		    print("<S>ymlink : symlink() failed\n");
 		}
 		goto finish_cmd;
+	    case TOK_CA:
 	    case TOK_CP: {
+		    /* ca <src> : cat a file to stdout */
 		    /* cp <src> <dst> : copy a file and its mode */
 		    char buffer[4096];
 		    int src, dst;
@@ -1618,9 +1622,14 @@ int main(int argc, char **argv, char **envp) {
 		    if (src < 0)
 			    goto open_err_src;
 
-		    dst = open(cfg_args[2], O_CREAT|O_WRONLY|O_TRUNC|O_LARGEFILE, stat_buf.st_mode);
-		    if (src < 0)
-			    goto open_err_dst;
+		    if (token == TOK_CP) {
+			    dst = open(cfg_args[2], O_CREAT|O_WRONLY|O_TRUNC|O_LARGEFILE, stat_buf.st_mode);
+			    if (dst < 0)
+				    goto open_err_dst;
+		    } else {
+			    // TOK_CA: output to stdout
+			    dst = 1;
+		    }
 
 		    while (1) {
 			    len = read(src, buffer, sizeof(buffer));
@@ -1634,7 +1643,8 @@ int main(int argc, char **argv, char **envp) {
 		    err = 0;
 		read_err:
 		write_err:
-		    close(dst);
+		    if (dst != 1)
+			    close(dst);
 		open_err_dst:
 		    close(src);
 		open_err_src:
