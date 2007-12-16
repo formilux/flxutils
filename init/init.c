@@ -722,7 +722,7 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp) {
 			    }
 			    break;
 		    case VAR_OBRACE:
-			    if (*p == '-') {
+			    if (*p == '-' || *p == '+') {
 				    var_state = VAR_DEFAULT;
 				    name_end  = p;
 				    def_beg = p + 1;
@@ -743,30 +743,37 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp) {
 		    }
 
 		    if (var_state == VAR_CBRACE) {
-			    /* here we have to do everything */
-			    var_state = VAR_NONE;
+			    int replace;
 
+			    /* here we have to do everything.
+			     * Name_end points to the first character after the name, which can be
+			     * '-', '+' or '}'.
+			     */
+			    var_state = VAR_NONE;
+			    replace = (*name_end == '+');
 			    *name_end = 0;
+
 			    repl = my_getenv(envp, name_beg, 0); // supports envp==NULL and name==NULL
 
 			    if (!repl)
 				    repl = find_arg(name_beg); // check in /proc/cmdline (useful for root= and init=)
 
-			    if (!repl) {
-				    /* easy part: variable not found, we use the
-				     * default value. It will always be shorter
-				     * than the expression because it's contained
-				     * in it.
+			    if (replace || !repl) {
+				    /* easy part: variable not found, or replacement with known a
+				     * string, we use the default value. It will always be shorter
+				     * than the expression because it's contained in it.
 				     */
 				    int ofs;
 
-				    if (def_end == def_beg) {
+				    if ((replace && !repl) || (def_end == def_beg)) {
+					    /* empty string is conserved in replace mode */
 					    memmove(dollar_ptr, brace_end, bufend - brace_end);
 					    ofs = brace_end - dollar_ptr;
 					    p -= ofs;
 					    cfg_line -= ofs;
 					    *cfg_data = cfg_line;
 				    } else {
+					    /* empty string with alternate mode or valid string in replace mode */
 					    memmove(dollar_ptr, def_beg, def_end - def_beg);
 					    memmove(dollar_ptr + (def_end - def_beg), brace_end, bufend - brace_end);
 					    ofs = (def_beg - dollar_ptr) + (brace_end - def_end);
