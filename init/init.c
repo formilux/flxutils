@@ -299,6 +299,7 @@ enum {
     TOK_MT,	/* mt : mount */
     TOK_RE,	/* re : remount */
     TOK_IN,	/* in : set init program */
+    TOK_BR,	/* br : branch (=execute without forking) */
     TOK_EX,	/* ex : execute */
     TOK_RX,	/* rx : execute under chroot */
     TOK_BL,	/* bl : make block devices */
@@ -328,7 +329,7 @@ enum {
 };
 
 /* counts from TOK_LN to TOK_DOT */
-#define NB_TOKENS	25
+#define NB_TOKENS	26
 
 /* possible states for variable parsing */
 enum {
@@ -352,6 +353,7 @@ static const  __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     "mt", 'M', 3,	/* TOK_MT */
     "re",   0, 3,	/* TOK_RE */
     "in", 'I', 1,	/* TOK_IN */
+    "br",   0, 1,	/* TOK_BR */
     "ex", 'E', 1,	/* TOK_EX */
     "rx", 'R', 2,	/* TOK_RX */
     "bl", 'B', 6,	/* TOK_BL */
@@ -399,7 +401,7 @@ static const __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     { "tty",     GID_TTY,  5, 0, 0666 | S_IFCHR },
     { "ptmx",    GID_TTY,  5, 2, 0666 | S_IFCHR },
     { "initctl", GID_ROOT, 0, 0, 0600 | S_IFIFO },
-} ;
+};
 
 static char cfg_data[MAX_CFG_SIZE];
 static char *cfg_args[MAX_CFG_ARGS];
@@ -1701,14 +1703,17 @@ int main(int argc, char **argv, char **envp) {
 
 		break;
 	    }
+	    case TOK_BR:
+		/* br cmd [cfg_args] : execute cmd with cfg_args but do not return */
+		/* fall through TOK_EX/TOK_RX and never fork nor exit */
 	    case TOK_EX:
-		/* E cmd [cfg_args] : execute cmd with cfg_args, chrooted to dir */
+		/* E cmd [cfg_args] : execute cmd with cfg_args */
 		/* fall through TOK_RX */
 	    case TOK_RX: {
 		/* R dir cmd [cfg_args] : execute cmd with cfg_args, chrooted to dir */
 		int res;
 
-		res = fork();
+		res = (token == TOK_BR) ? 0 : fork();
 		if (res == 0) {
 		    char **exec_args;
 		    /* OK, here's the problem :
@@ -1732,12 +1737,13 @@ int main(int argc, char **argv, char **envp) {
 			    exec_args++;
 		    }
 
-		    res = fork();
+		    res = (token == TOK_BR) ? 0 : fork();
 		    if (res == 0) {
 			    execve(exec_args[0], exec_args, envp);
 			    print("<E>xec(child) : execve() failed\n");
 			    //printf("after execve(%s)!\n", exec_args[0]);
-			    exit(1);
+			    if (token != TOK_BR)
+				    exit(1);
 		    }
 		    else if (res > 0) {
 			    int ret, rem;
@@ -1758,7 +1764,8 @@ int main(int argc, char **argv, char **envp) {
 			    exit(((ret == -1) || !WIFEXITED(status)) ?
 				 1 : WEXITSTATUS(status));
 		    }
-		    exit(1);
+		    if (token != TOK_BR)
+			    exit(1);
 		}
 		else if (res > 0) {
 		    int ret;
