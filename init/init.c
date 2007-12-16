@@ -306,6 +306,9 @@ enum {
     TOK_CH,	/* ch : make char devices */
     TOK_FI,	/* fi : make a fifo */
     TOK_MA,	/* ma : set umask */
+    TOK_CD,	/* cd : chdir */
+    TOK_CR,	/* cr : chroot (without chdir) */
+    TOK_SW,	/* sw : switch root = chdir + chroot . + reopen console */
     TOK_PR,	/* pr : pivot root */
     TOK_MV,	/* mv : move a filesystem */
     TOK_BI,	/* bi : bind a directory */
@@ -329,7 +332,7 @@ enum {
 };
 
 /* counts from TOK_LN to TOK_DOT */
-#define NB_TOKENS	26
+#define NB_TOKENS	29
 
 /* possible states for variable parsing */
 enum {
@@ -360,6 +363,9 @@ static const  __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     "ch", 'C', 6,	/* TOK_CH */
     "fi", 'F', 4,	/* TOK_FI */
     "ma", 'U', 1,	/* TOK_MA */
+    "cd",   0, 1,	/* TOK_CD */
+    "cr",   0, 1,	/* TOK_CR */
+    "sw",   0, 1,	/* TOK_SW */
     "pr", 'P', 2,	/* TOK_PR */
     "mv", 'K', 2,	/* TOK_MV */
     "bi", 'K', 2,	/* TOK_BI */
@@ -1785,6 +1791,33 @@ int main(int argc, char **argv, char **envp) {
 	    case TOK_MA:
 		/* U <umask> : change umask */
 		umask(a2mode(cfg_args[1]));
+		break;
+	    case TOK_CD:
+		/* cd <new_dir> : change current directory */
+		if (chdir(cfg_args[1]) == -1) {
+		    error = 1;
+		    print("cd : error during chdir()\n");
+		}
+		break;
+	    case TOK_CR:
+		/* cr <new_root> : change root without chdir */
+		if (chroot(cfg_args[1]) == -1) {
+		    error = 1;
+		    print("cr (chroot) : error during chroot()\n");
+		}
+		break;
+	    case TOK_SW:
+		/* sw <new_root> : switch root + reopen console from new root if it exists */
+		if (chroot(cfg_args[1]) == -1) {
+		    error = 1;
+		    print("cr (chroot) : error during chroot()\n");
+		}
+		if (chdir(root_dir) == -1) {
+		    error = 1;
+		    print("cd : error during chdir()\n");
+		}
+		/* replace stdin/stdout/stderr with newer ones */
+		reopen_console();
 		break;
 	    case TOK_PR:
 		/* P <new_root> <put_old_relative> : pivot root */
