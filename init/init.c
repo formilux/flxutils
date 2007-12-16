@@ -716,9 +716,10 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp) {
 			    if (*p != '{') {
 				    var_state = VAR_NONE;
 				    dollar_ptr = NULL;
+			    } else {
+				    var_state = VAR_OBRACE;
+				    name_beg = p + 1;
 			    }
-			    name_beg = p + 1;
-			    var_state = VAR_OBRACE;
 			    break;
 		    case VAR_OBRACE:
 			    if (*p == '-') {
