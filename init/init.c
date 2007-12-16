@@ -307,6 +307,7 @@ enum {
     TOK_FI,	/* fi : make a fifo */
     TOK_MA,	/* ma : set umask */
     TOK_CD,	/* cd : chdir */
+    TOK_CP,	/* cp : copy file */
     TOK_CR,	/* cr : chroot (without chdir) */
     TOK_SW,	/* sw : switch root = chdir + chroot . + reopen console */
     TOK_PR,	/* pr : pivot root */
@@ -333,7 +334,7 @@ enum {
 };
 
 /* counts from TOK_LN to TOK_DOT */
-#define NB_TOKENS	30
+#define NB_TOKENS	31
 
 /* possible states for variable parsing */
 enum {
@@ -365,6 +366,7 @@ static const  __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     "fi", 'F', 4,	/* TOK_FI */
     "ma", 'U', 1,	/* TOK_MA */
     "cd",   0, 1,	/* TOK_CD */
+    "cp",   0, 2,	/* TOK_CP */
     "cr",   0, 1,	/* TOK_CR */
     "sw",   0, 1,	/* TOK_SW */
     "pr", 'P', 2,	/* TOK_PR */
@@ -456,7 +458,7 @@ static int streq(const char *str1, const char *str2) {
  * This code has been optimized for size and speed : on x86, it's 45 bytes
  * long, uses only registers, and consumes only 4 cycles per char.
  */
-static inline int my_strlcpy(char *dst, const char *src, int size) {
+int my_strlcpy(char *dst, const char *src, int size) {
     char *orig = dst;
     if (size) {
 	while (--size && (*dst = *src)) {
@@ -1219,6 +1221,7 @@ int main(int argc, char **argv, char **envp) {
     struct stat statf;
     //    char *cmdline_arg;
     char *cfg_file;
+    char *ret_msg = NULL;
     int brace_level, kbd_level, run_level;
     struct {
 	int error;
@@ -1226,6 +1229,7 @@ int main(int argc, char **argv, char **envp) {
     } context[MAX_BRACE_LEVEL];
 
     char *conf_init, *force_init;
+    char missing_arg_msg[] = "0 args needed\n";
 
     /* first, we'll check if we have been called as 'linuxrc', used only in
        initrd. In this particular case, we ignore all arguments and use
@@ -1368,6 +1372,10 @@ int main(int argc, char **argv, char **envp) {
 		char *p = prompt;
 		int lev1, lev2;
 
+		if (ret_msg) 
+		    p += my_strlcpy(p, ret_msg, sizeof(cmd_line));
+
+		ret_msg = NULL;
 		p += my_strlcpy(p, error ? CONST_STR("ER\n>") : CONST_STR("OK\n>"), 5);
 
 		lev1 = run_level;
@@ -1413,7 +1421,7 @@ int main(int argc, char **argv, char **envp) {
 	    }
 	    
 	    if (token == TOK_UNK) {
-		print("unknown command.\n");
+		ret_msg = "?\n";
 		continue;
 	    }
 
@@ -1421,7 +1429,8 @@ int main(int argc, char **argv, char **envp) {
 	    token &= ~TOK_COND;
 
 	    if (cfg_args[(int)tokens[token].minargs] == NULL) {
-		print("Missing args\n");
+		missing_arg_msg[0] = '0' + tokens[token].minargs;
+		ret_msg = missing_arg_msg;
 	        continue;
 	    }
 
@@ -1597,6 +1606,45 @@ int main(int argc, char **argv, char **envp) {
 		    print("<S>ymlink : symlink() failed\n");
 		}
 		goto finish_cmd;
+	    case TOK_CP: {
+		    /* cp <src> <dst> : copy a file and its mode */
+		    char buffer[4096];
+		    int src, dst;
+		    int len, mode, err;
+		    struct stat stat_buf;
+
+		    err = 1;
+		    if (stat(cfg_args[1], &stat_buf) == -1)
+			    goto stat_err;
+
+		    src = open(cfg_args[1], O_RDONLY);
+		    if (src < 0)
+			    goto open_err_src;
+
+		    dst = open(cfg_args[2], O_CREAT|O_WRONLY|O_TRUNC|O_LARGEFILE, stat_buf.st_mode);
+		    if (src < 0)
+			    goto open_err_dst;
+
+		    while (1) {
+			    len = read(src, buffer, sizeof(buffer));
+			    if (len == 0)
+				    break;
+			    if (len < 0)
+				    goto read_err;
+			    if (write(dst, buffer, len) < 0)
+				    goto write_err;
+		    }
+		    err = 0;
+		read_err:
+		write_err:
+		    close(dst);
+		open_err_dst:
+		    close(src);
+		open_err_src:
+		stat_err:
+		    error = err;
+		goto finish_cmd;
+	    }
 	    case TOK_ST: {		
 		/* st file : return error if file does not exist */
 		struct stat stat_buf;
