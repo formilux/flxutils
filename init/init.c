@@ -413,6 +413,7 @@ static char cfg_data[MAX_CFG_SIZE];
 static char *cfg_args[MAX_CFG_ARGS];
 static char *cfg_line;
 static char cmdline[MAX_CMDLINE_LEN];
+static int cmdline_len;
 static char *cst_str[MAX_FIELDS];
 static char *var_str[MAX_FIELDS];
 static struct dev_varstr var[MAX_FIELDS];
@@ -491,24 +492,25 @@ char *find_arg(char *arg) {
     char *a, *c;
 
     /* read cmdline the first time */
-    if (!*cmdline) {
-	int fd, len;
+    if (cmdline_len <= 0) {
+	int fd;
 
 	if ((fd = open(proc_cmdline, O_RDONLY)) == -1)
 	    return NULL;
-	if ((len = read(fd, cmdline, sizeof(cmdline)-1)) == -1) {
-	    close(fd);
-	    return NULL;
-	}
-	cmdline[len] = 0;
+
+	cmdline_len = read(fd, cmdline, sizeof(cmdline)-1);
 	close(fd);
+	if (cmdline_len <= 0)
+	    return NULL;
+	cmdline[cmdline_len++] = 0;
     }
     
     /* search for the required arg in cmdline */
     c = cmdline;
     a = arg;
 
-    while (*c) {
+    /* we can check up to the last byte because we know it's zero */
+    while (c <= cmdline + cmdline_len) {
 	if (*a == 0) {
 	    /* complete match. is it a full word ? */
 	    if (*c == '=') {
@@ -527,7 +529,7 @@ char *find_arg(char *arg) {
 		a = arg;
 	    }
 	}
-	if (*c == *a) {
+	else if (*c == *a) {
 	    a++;
 	    c++;
 	}
@@ -536,10 +538,7 @@ char *find_arg(char *arg) {
 	    a = arg;
 	}
     }
-    if (*a == 0) /* complete match at end of string */
-	return c; /* pointer to empty string */
-    else
-	return NULL; /* not found */
+    return NULL; /* not found */
 }
 
 /*
