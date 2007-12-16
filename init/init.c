@@ -242,13 +242,13 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cur_dir
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_name[]  = "/dev";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_dir[]   = "/var";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_fname[] = "/.preinit";	   /* configuration file */
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) msg_err_console[] = "Command ignored, input alread bound to console !\n";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) msg_err_console[] = "Command ignored, input already bound to console !\n";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_console[] = "dev/console";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str_rebuild[] = "rebuild";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_tmp[]   = "/var/tmp";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_run[]   = "/var/run";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_self_fd[]   = "/proc/self/fd";
-//static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_cmdline[] = "/proc/cmdline";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_cmdline[] = "/proc/cmdline";
 //static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init[] = "sbin/init";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init_sysv[] = "sbin/init-sysv";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_linuxrc[] = "/.linuxrc";
@@ -272,7 +272,7 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_roo
 #define MAX_DEVNAME_LEN	64
 #define MAX_CFG_SIZE	16384
 #define	MAX_CFG_ARGS	64
-//#define MAX_CMDLINE_LEN 512
+#define MAX_CMDLINE_LEN 512
 #define MAX_BRACE_LEVEL	10
 
 struct dev_varstr {
@@ -412,7 +412,7 @@ static const __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
 static char cfg_data[MAX_CFG_SIZE];
 static char *cfg_args[MAX_CFG_ARGS];
 static char *cfg_line;
-//static char cmdline[MAX_CMDLINE_LEN];
+static char cmdline[MAX_CMDLINE_LEN];
 static char *cst_str[MAX_FIELDS];
 static char *var_str[MAX_FIELDS];
 static struct dev_varstr var[MAX_FIELDS];
@@ -483,7 +483,6 @@ static void reopen_console() {
 	print("init/info : reopened /dev/console\n");
 }
 
-#if 0
 /* reads the kernel command line </proc/cmdline> into memory and searches
  * for the first assignment of the required variable. Return its value
  * (which may be empty) or NULL if not found.
@@ -542,7 +541,6 @@ char *find_arg(char *arg) {
     else
 	return NULL; /* not found */
 }
-#endif
 
 /*
  * looks for the last assignment of variable 'var=' in 'envp'.
@@ -750,6 +748,9 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp) {
 
 			    *name_end = 0;
 			    repl = my_getenv(envp, name_beg, 0); // supports envp==NULL and name==NULL
+
+			    if (!repl)
+				    repl = find_arg(name_beg); // check in /proc/cmdline (useful for root= and init=)
 
 			    if (!repl) {
 				    /* easy part: variable not found, we use the
