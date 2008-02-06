@@ -1,3 +1,19 @@
+2008/02/06 11:28  willy@wtap
+
+	* released flxutils-0.1.31-flx0.1
+	* build: remove extraneous '-Os' in diet call
+	* init: add the "br" command to branch without returning
+	* init: add new commands "cd", "cr" and "sw"
+	* init: add checks for the kernel's cmdline
+	* init: fixed variable checking out of cmdline
+	* init: fixed small bug in variable name parser causing infinite loops
+	* init: add support for ${var+val} construct
+	* init: added the 'eq' command to compare strings
+	* init: disable omit-leaf-frame-pointer
+	* init: implement the "cp" command
+	* init: small cleanup, removed one write()
+	* init: implement the "ca" command to cat a file
+
 2007/09/25 23:10  willy@wtap
 
 	* released flxutils-0.1.30-flx0.3
