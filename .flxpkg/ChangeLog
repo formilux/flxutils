@@ -1,3 +1,9 @@
+2008/09/03 16:33  willy@wtap
+
+	* released flxutils-0.1.32-flx0.1
+	* fixed mii-diag build with recent gcc
+	* wdd: support -c and -f
+
 2008/02/06 11:28  willy@wtap
 
 	* released flxutils-0.1.31-flx0.1
