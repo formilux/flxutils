@@ -1338,10 +1338,10 @@ static void parse_eeprom(unsigned char *ee_data, int flags)
 	  /* Should actually do a fix-up based on the vendor half of the station
 		 address prefix here.  Or least use that information to report which
 		 transceiver will work. */
-		printf("  * An old-style EEPROM layout was found.
-  * The old-style layout does not contain transceiver control information.
-  * This board may not work, or may work only with a subset of transceiver
-  * options or data rates.\n");
+		printf("  * An old-style EEPROM layout was found."
+  "* The old-style layout does not contain transceiver control information."
+  "* This board may not work, or may work only with a subset of transceiver"
+  "* options or data rates.\n");
 	  return;
 	} else if (ee_data[27] == 0) {
 		printf(" A simplifed EEPROM data table was found.\n"
