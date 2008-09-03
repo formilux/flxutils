@@ -1,8 +1,8 @@
-.TH wdd "8" "August 2004" "wdd (flxutils) 0.1.23"  "Simple Watchdog Daemon"
+.TH wdd "3" "September 2008" "wdd (flxutils) 0.1.32"  "Simple Watchdog Daemon"
 .SH NAME
 wdd - Simple Watchdog Daemon
 .SH SYNOPSIS
-.B wdd [file]...
+.B wdd [-c count -f file] [file]...
 .SH DESCRIPTION
 Wdd is a simple daemon which periodically pings the watchdog attached
 to /dev/watchdog to keep it alive, and parallely performs a series of
@@ -26,6 +26,15 @@ startup are removed from the tests and get their first character
 rewritten with a '\fB!\fP' in the argument list, so that they become
 easily identifiable with \fBps\fP.
 
+Another option consists in checking an "alive file". It is a file
+which is checked every second, and which causes the daemon to exit
+if it is not touched within a number of seconds. The file name must be
+passed after the optionnal argument "-f", and the maximal count of
+acceptable checks which report the same status must be passed after
+the optionnal argument "-c". If either of these arguments is omitted,
+the file check is disabled, which is the default. A non-existing file
+is considered different from an existing one.
+
 .SH SYSTEM CHECKS
 System checks are performed in this order :
 .LP
@@ -46,6 +55,8 @@ deliver signals.
 has been checked, the check loops back to the first one. If no
 argument was given, a test is performed on \fB/\fP to ensure that the
 VFS still works and that an eventual NFS root is still accessible.
+.TP
+\- The alive file is checked for changes.
 .TP
 \- The daemon then pauses one second before starting the checks again.
 
@@ -74,6 +85,12 @@ nor experienced a mount or unmount, that \fB/proc\fP is mounted, that
 \fB/var\fP is mounted and has not been wiped out, and that \fB/tmp\fP
 either is mounted or is a symbolic link to a valid directory. 
 
+.TP
+\fBwdd -c 3600 -f /var/state/.wdalive / /proc/self/root
+.br
+If the status of the file \fP/var/state/.wdalive\fP has not changed
+during the last 3600 seconds, the daemon will exit.
+
 .SH BUGS
 .LP
 .TP
@@ -84,4 +101,4 @@ There's absolutely no output, neither debug nor error.
 .SH SEE ALSO
 \fIDocumentation/watchdog-api.txt\fP in the Linux kernel sources.
 .SH AUTHORS
-Willy Tarreau <willy@meta-x.org>
+Willy Tarreau <w@1wt.eu>

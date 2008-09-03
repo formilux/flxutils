@@ -73,6 +73,9 @@ static inline int try_stat(const char *file, int do_exit) {
 int main (int argc, char **argv) {
     int dev;
     int curr_file;
+    int curr_count, stat_count = 0;
+    char *touch_file = NULL;
+    struct stat file_stat;
 
     if (argc > 1) {
 	/* we'll do a quick check on all the arguments to
@@ -80,6 +83,28 @@ int main (int argc, char **argv) {
 	 * an accidental start of the watchdog which could be
 	 * a disaster in case of a file name error.
 	 */
+	    while (argc > 1 && argv[1][0] == '-') {
+		    argc--; argv++;
+		    if (argv[0][1] == '-') {
+			    /* -- */
+			    break;
+		    }
+		    else if (argv[0][1] == 'c') {
+			    /* -c <count> */
+			    if (argc < 2)
+				    break;
+			    stat_count = atol(argv[1]);
+			    argc--; argv++;
+		    }
+		    else if (argv[0][1] == 'f') {
+			    /* -f <file> */
+			    if (argc < 2)
+				    break;
+			    touch_file = argv[1];
+			    argc--; argv++;
+		    }
+	    }
+
 	for (curr_file = 1; curr_file < argc; ) {
 	    if (try_stat(argv[curr_file], 0))
 		curr_file++;
@@ -98,6 +123,8 @@ int main (int argc, char **argv) {
     chdir(root_str);
     setsid();
 
+    curr_count = stat_count;
+    memset(&file_stat, 0, sizeof(file_stat));
     curr_file = 1; /* start with first file in the list */
     /* let's try indefinitely to open the watchdog device */
     /* note that dev is -1 now ;-) */
@@ -121,6 +148,26 @@ int main (int argc, char **argv) {
 		curr_file = 1;
 	} else {
 	    try_stat(root_str, 1);
+	}
+
+	/* we may want to check that the touch_file has been touched */
+	if (touch_file && stat_count) {
+		struct stat tmp;
+
+		/* an absent file sets an empty struct stat */
+		if (stat(touch_file, &tmp) < 0)
+			memset(&tmp, 0, sizeof(tmp));
+
+		if (memcmp(&file_stat, &tmp, sizeof(tmp)) != 0) {
+			/* the file has been touched */
+			memcpy(&file_stat, &tmp, sizeof(tmp));
+			curr_count = stat_count;
+		} else {
+			/* still no change */
+			curr_count--;
+			if (!curr_count)
+				exit(1);
+		}
 	}
 
 	/* avoid a fast loop */
