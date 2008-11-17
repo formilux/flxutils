@@ -1,3 +1,7 @@
+2008/11/17
+- flxutils-0.1.32-flx0.2
+- pcidev: add class-filtering support, speedups, fixees, small cleanups
+
 2008/09/03
 - released flxutils-0.1.32-flx0.1
 - fixed mii-diag build with recent gcc
