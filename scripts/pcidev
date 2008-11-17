@@ -3,12 +3,12 @@
 # The block between #B and #E will be used as help.
 #B
 # Formilux 0.1.8 - http://www.ant-computing.com/
-# PCIDEV - PCI device drivers scanner version 0.3
+# PCIDEV - PCI device drivers scanner version 0.4
 # 2008/11/17 - Willy Tarreau - willy@ant-computing.com
 # May be redistributed under the terms of the GPL.
 #
 # usage :
-#   pcidev [-vnm] [path to modules.pcimap]
+#   pcidev [-vnm] [-c class/mask] [path to modules.pcimap]
 # example :
 #   pcidev /lib/modules/`uname -r`/modules.pcimap
 #
@@ -21,11 +21,14 @@
 # If the "-n" argument is given, only modules that seem not to
 # have already been loaded will be. If the "-m" argument is given,
 # those modules will be loaded through modprobe (verbosely if "-v"
-# is specified).
+# is specified). "-c" limits modules to class matching hex <class>
+# using hex <mask>. Eg: -c 0x020000/0xffff00 for Ethernet devices.
 #E
 MODPROBE=0
 ONLYNEW=0
 VERBOSE=0
+ONLYCLASS=0
+ONLYMASK=0
 MAPFILE=
 PCIDEVDIR=/proc/bus/pci
 
@@ -41,6 +44,12 @@ while [ $# -gt 0 ]; do
 	 ;;
       -n)
          ONLYNEW=1
+	 ;;
+      -c)
+	 ONLYCLASS=$2
+	 ONLYMASK=${ONLYCLASS##*/}
+	 ONLYCLASS=${ONLYCLASS%%/*}
+	 shift
 	 ;;
       -m)
 	 MODPROBE=1
@@ -73,6 +82,7 @@ if [ $ONLYNEW -eq 0 ]; then
    echo "# module device(entry) class  vid  pid  svid spid irq modules"
 fi
 
+oldlist=; xpid=; xvid=; xsvid=; xspid=; xclass=
 for device in $pcidev; do
     x=${device%??/??.?}
     dev=${device#$x}
@@ -96,7 +106,17 @@ for device in $pcidev; do
     set -- `grep "^$entry" $PCIDEVDIR/devices`
     irq=$[0x$3]; driver=${18}
 
+    # maybe we asked to limit the class to a specific value/mask
+    (( (0x$class & $ONLYMASK) == $ONLYCLASS )) || continue
+
+    # if we only list new modules and the module is the same as
+    # previous one, don't list it (common with network cards)
+    [ $ONLYNEW -gt 0 -a "$xclass" = "0x$class" -a \
+      "$xpid" = "0x$pid" -a "$xvid" = "0x$vid" -a \
+      "$xsvid" = "0x$svid" -a "$xspid" = "0x$spid" ] && continue
+
     xpid=0x$pid; xvid=0x$vid; xsvid=0x$svid; xspid=0x$spid; xclass=0x$class
+
     # look for modules supporting these devices. We exclude the rare modules
     # which pretend to support any vendor/product/subsys for PCI bridges because
     # they tend to pop up everywhere there is a bridge.
@@ -118,7 +138,8 @@ for device in $pcidev; do
 
     if [ -z "$driver" ]; then
 	if [ $ONLYNEW -gt 0 ]; then
-	    if [ "$list" ]; then
+	    if [ "$list" -a "$list" != "$oldlist" ]; then
+		oldlist="$list"
 		if [ $MODPROBE -gt 0 ]; then
 		    for module in $list; do
 			if [ $VERBOSE -gt 0 ]; then
