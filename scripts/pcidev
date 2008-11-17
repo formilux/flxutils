@@ -2,9 +2,9 @@
 #
 # The block between #B and #E will be used as help.
 #B
-# Formilux 0.1.5 - http://www.ant-computing.com/
-# PCIDEV - PCI device drivers scanner version 0.2
-# 2002/02/02 - Willy Tarreau - willy@ant-computing.com
+# Formilux 0.1.8 - http://www.ant-computing.com/
+# PCIDEV - PCI device drivers scanner version 0.3
+# 2008/11/17 - Willy Tarreau - willy@ant-computing.com
 # May be redistributed under the terms of the GPL.
 #
 # usage :
@@ -87,32 +87,32 @@ for device in $pcidev; do
     vid=$2$1; pid=$4$3; class=${12}${11}${10};
     svid=${46}${45}; spid=${48}${47}
 
-    # now construct in <entry> a 16 bits entry for pci/devices from $dev
-    set -- `echo $dev|tr '/.' '  '`
-    bus=$1; slot=$[0x$2]; func=$[0x$3];
-    high=$[((($slot<<3)+$func)>>4)+1]; low=$[((($slot<<3)+$func)&15)+1]
-    set 0 1 2 3 4 5 6 7 8 9 a b c d e f
-    eval entry=${bus}\${$high}\${$low}
+    # now construct in <entry> a 16 bits entry for pci/devices from $dev, with
+    # bus in $1, slot in $2, func in $3
+    set -- ${dev//[.\/]/ }
+    entry=$(printf "%s%02x" "$1" $(((0x$2<<3)+0x$3)))
 
     # look for a registered device in /proc/bus/pci/devices
     set -- `grep "^$entry" $PCIDEVDIR/devices`
     irq=$[0x$3]; driver=${18}
 
-    # look for modules supporting these devices
+    xpid=0x$pid; xvid=0x$vid; xsvid=0x$svid; xspid=0x$spid; xclass=0x$class
+    # look for modules supporting these devices. We exclude the rare modules
+    # which pretend to support any vendor/product/subsys for PCI bridges because
+    # they tend to pop up everywhere there is a bridge.
     if [ ! -z "$MAPFILE" ]; then
 	list=""
-	while read; do
-	    set -- $REPLY
-	    if [ "$1" != "#" ]; then
-		res=$[($2 == 0x$vid  || $2 == 0xffffffff) && \
-		    ($3 == 0x$pid  || $3 == 0xffffffff) && \
-		    ($4 == 0x$svid || $4 == 0xffffffff) && \
-		    ($5 == 0x$spid || $5 == 0xffffffff) && \
-		    ((0x$class & $7) == $6) ]
-		if [ $res -gt 0 ]; then
-		    list="$list$1 "
-		fi
-	    fi
+	while read f1 f2 f3 f4 f5 f6 f7 rest; do
+	    [ "$f1" != "#" -a -n "$f7" ] || continue
+	    (( $f3 == 0xffffffff || $f3 == $xpid  )) || continue
+	    (( $f2 == 0xffffffff || $f2 == $xvid  )) || continue
+	    (( $f4 == 0xffffffff || $f4 == $xsvid )) || continue
+	    (( $f5 == 0xffffffff || $f5 == $xspid )) || continue
+	    (( ($xclass & $f7) == $f6 )) || continue
+	    (( $f2 != 0xffffffff || $f3 != 0xffffffff ||
+	       $f4 != 0xffffffff || $f5 != 0xffffffff ||
+	       $f6 != 0x00060400 )) || continue
+	    list="$list$f1 "
 	done < $MAPFILE
     fi
 

@@ -1,2 +1,3 @@
 #!/bin/sh
+# Obsoleted by "pcidev -n" on recent versions
 pcidev  /lib/modules/`uname -r`/modules.pcimap | grep '^##none## [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+'|sed -e 's/^[^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ [^ ]\+ //'
