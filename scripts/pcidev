@@ -153,12 +153,11 @@ for device in $pcidev; do
 	    if [ "$list" -a "$list" != "$oldlist" ]; then
 		oldlist="$list"
 		if [ $MODPROBE -gt 0 ]; then
-		    for module in $list; do
-			if [ $VERBOSE -gt 0 ]; then
-			    echo "modprobe $module"
-			fi
-			modprobe $module
-		    done
+		    # modprobe is smart enough to try several modules
+		    if [ $VERBOSE -gt 0 ]; then
+			echo "modprobe $list"
+		    fi
+		    modprobe $list
 		else
 		    echo $list
 		fi
