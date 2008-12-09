@@ -3,33 +3,35 @@
 # The block between #B and #E will be used as help.
 #B
 # Formilux 0.1.8 - http://www.ant-computing.com/
-# PCIDEV - PCI device drivers scanner version 0.4
-# 2008/11/17 - Willy Tarreau - willy@ant-computing.com
+# PCIDEV - PCI device drivers scanner version 0.5
+# 2008/12/09 - Willy Tarreau - willy@ant-computing.com
 # May be redistributed under the terms of the GPL.
 #
 # usage :
-#   pcidev [-vnm] [-c class/mask] [path to modules.pcimap]
-# example :
+#   pcidev [-vnm] [-c class/mask]* [path to modules.pcimap]
+# examples :
 #   pcidev /lib/modules/`uname -r`/modules.pcimap
+#   pcidev -v -n -m -c 0x200000/0xffff00
 #
-# This program lists all pci devices, displays their IDs
-# and the names of the driver attached to each device, when
-# available, or "##none##'. If an argument is passed, it will
-# be interpreted as the path to a modules.pcimap file. In this
-# case, the list of all possible modules for each device is
-# appended at the end of the line.
-# If the "-n" argument is given, only modules that seem not to
-# have already been loaded will be. If the "-m" argument is given,
-# those modules will be loaded through modprobe (verbosely if "-v"
-# is specified). "-c" limits modules to class matching hex <class>
-# using hex <mask>. Eg: -c 0x020000/0xffff00 for Ethernet devices.
+# This program lists all pci devices, displays their IDs and the names of the
+# driver attached to each device, when available, or "##none##'. If an argument
+# is passed, it will be interpreted as the path to a modules.pcimap file. In
+# this case, the list of all possible modules for each device is appended at
+# the end of the line. If the "-n" argument is given, only modules that seem
+# not to have already been loaded will be. Note that with '-n', an implicit
+# path to modules.pcimap is used for the current kernel. If the "-m" argument
+# is given, those modules will be loaded through modprobe (verbosely if "-v"
+# is specified). "-c" limits modules to classes matching hex <class> using hex
+# <mask>. Multiple -c may be used to look for multiple classes.
+# Eg: -c 0x020000/0xffff00 for Ethernet devices.
 #E
 MODPROBE=0
 ONLYNEW=0
 VERBOSE=0
-ONLYCLASS=0
-ONLYMASK=0
+ONLYCLASS=( )
+ONLYMASK=( )
 MAPFILE=
+NBCLASS=0
 PCIDEVDIR=/proc/bus/pci
 
 if [ ! -d "$PCIDEVDIR" ]; then
@@ -46,9 +48,12 @@ while [ $# -gt 0 ]; do
          ONLYNEW=1
 	 ;;
       -c)
-	 ONLYCLASS=$2
-	 ONLYMASK=${ONLYCLASS##*/}
-	 ONLYCLASS=${ONLYCLASS%%/*}
+	 oc=$2
+	 om=${oc##*/}
+	 oc=${oc%%/*}
+	 ONLYCLASS[$NBCLASS]=$oc
+	 ONLYMASK[$NBCLASS]=$om
+	 (( NBCLASS++ ))
 	 shift
 	 ;;
       -m)
@@ -107,7 +112,14 @@ for device in $pcidev; do
     irq=$[0x$3]; driver=${18}
 
     # maybe we asked to limit the class to a specific value/mask
-    (( (0x$class & $ONLYMASK) == $ONLYCLASS )) || continue
+    if [ $NBCLASS -gt 0 ]; then
+	cid=0
+	while [ $cid -lt $NBCLASS ]; do
+	    (( (0x$class & ${ONLYMASK[$cid]}) == ${ONLYCLASS[$cid]} )) && break
+	    (( cid++ ))
+	done
+	[ $cid -lt $NBCLASS ] || continue
+    fi
 
     # if we only list new modules and the module is the same as
     # previous one, don't list it (common with network cards)
