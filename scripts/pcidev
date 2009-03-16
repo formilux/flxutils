@@ -33,6 +33,7 @@ ONLYMASK=( )
 MAPFILE=
 NBCLASS=0
 PCIDEVDIR=/proc/bus/pci
+KVER=$(uname -r)
 
 if [ ! -d "$PCIDEVDIR" ]; then
    echo "No PCI support on this host. Aborting."
@@ -153,11 +154,20 @@ for device in $pcidev; do
 	    if [ "$list" -a "$list" != "$oldlist" ]; then
 		oldlist="$list"
 		if [ $MODPROBE -gt 0 ]; then
-		    # modprobe is smart enough to try several modules
-		    if [ $VERBOSE -gt 0 ]; then
-			echo "modprobe $list"
+		    if [ -z "${KVER##2.6*}" ]; then
+		        # modprobe in 2.6 is smart enough to try several modules
+		        if [ $VERBOSE -gt 0 ]; then
+			    echo "modprobe $list"
+		        fi
+		        modprobe $list
+		    else
+			for module in $list; do
+			    if [ $VERBOSE -gt 0 ]; then
+				echo "modprobe $module"
+			    fi
+			    modprobe $module
+			done
 		    fi
-		    modprobe $list
 		else
 		    echo $list
 		fi
