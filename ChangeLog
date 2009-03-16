@@ -1,3 +1,9 @@
+2009/03/16
+- flxutils-0.1.33-flx0.1
+- pcidev: add support for matching multiple classes
+- pcidev: use modprobe $list and not modprobe on each element
+- pcidev: modprobe in kernel 2.4 does not support module lists
+
 2008/11/17
 - flxutils-0.1.32-flx0.2
 - pcidev: add class-filtering support, speedups, fixees, small cleanups
