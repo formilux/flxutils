@@ -3,7 +3,7 @@ include ../include/rules.make
 CFLAGS+=-fomit-frame-pointer
 
 %:	%.c
-	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $<
+	$(CC) $(LDFLAGS) $(CFLAGS) -W -Wall -o $@ $<
 	$(STRIP) -x --strip-unneeded -R .comment -R .note $@
 	$(OBJDUMP) -h $@ | grep -q '\.data[ ]*00000000' && $(STRIP) -R .data $@ || true
-	#$(SSTRIP) $@
+	-if [ -n "$(SSTRIP)" ]; then $(SSTRIP) $@ ; fi
