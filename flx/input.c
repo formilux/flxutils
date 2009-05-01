@@ -1,4 +1,6 @@
 #include <string.h>
+#include <stdlib.h>
+
 #include "utils.h"
 #include "source_type.h"
 #include "input.h"

@@ -1,4 +1,5 @@
 #include <string.h>
+#include <stdlib.h>
 #include "utils.h"
 #include "flx.h"
 #include "output.h"

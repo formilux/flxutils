@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <ctype.h>
+#include <stdlib.h>
 
 #include "utils.h"
 
