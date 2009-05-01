@@ -132,7 +132,7 @@ t_file_desc *fill_from_signfs_line(char **tab, char **rpath, t_file_desc **desc)
 	    if (rpath) *rpath = p1;
 	    break;
 	case 8: /* link */
-	    (*desc)->link = strdup(p1);
+	    (*desc)->link = (unsigned char*)strdup(p1);
 	    break;
 	}
     }

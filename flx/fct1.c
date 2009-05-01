@@ -46,7 +46,7 @@ t_file_desc *complete_info_from_file(char *path, t_file_desc *desc, int flag) {
             PFERROR("readlink(%s)", path);
         } else {
             temp[l] = 0;
-            desc->link = strdup(temp);
+            desc->link = (unsigned char*)strdup(temp);
             desc->md5 = checksum_md5_from_data(temp, l);
         }
     }   
@@ -94,14 +94,14 @@ int  files_are_the_same(t_file_desc *f1, t_file_desc *f2, int Diff, char *path) 
 			PFERROR("readlink(%s)",path);
 		    } else {
 			temp[l] = 0;
-			if (!f1->link) f1->link = strdup(temp);
-			if (!f2->link) f2->link = strdup(temp);
+			if (!f1->link) f1->link = (unsigned char*)strdup(temp);
+			if (!f2->link) f2->link = (unsigned char*)strdup(temp);
 			if (!f1->md5) f1->md5 = checksum_md5_from_data(temp, l);
 			if (!f2->md5) f2->md5 = checksum_md5_from_data(temp, l);
 		    }
 		}
 	    }
-	    if (!(diff & DIFF_LINK) && strcmp(f1->link, f2->link)) 
+	    if (!(diff & DIFF_LINK) && strcmp((const char*)f1->link, (const char*)f2->link)) 
 		diff |= DIFF_LINK; /* links differ */
 	}
     }
@@ -224,10 +224,10 @@ int browse_over_path(char *path, PROTO_FS(*fct), void *data) {
 
 
 /* build an MD5 checksum from data in file */
-char *checksum_md5_from_file(char *file) {
+unsigned char *checksum_md5_from_file(char *file) {
     int       fd;
     ssize_t   size;
-    char      *checksum_md5 = NULL, blk[BUFFER_LENGTH];
+    unsigned char      *checksum_md5 = NULL, *blk[BUFFER_LENGTH];
     MD5_CTX   md5_ctx;
     
     if ((fd = open(file, O_RDONLY)) < 0 ) {
@@ -236,7 +236,7 @@ char *checksum_md5_from_file(char *file) {
     else {
 	MD5Init(&md5_ctx);
 	while ((size = read(fd, blk, BUFFER_LENGTH)) > 0)
-	    MD5Update(&md5_ctx, blk, size);
+	    MD5Update(&md5_ctx, (const void*)blk, size);
 	close(fd);
         // if size = -1, there is a read error, don't do anything
         if (size == 0) { // last read is null
@@ -248,12 +248,12 @@ char *checksum_md5_from_file(char *file) {
 }
 
 /* build an MD5 checksum from a string */
-char *checksum_md5_from_data(char *data, int len) {
-    char      *checksum_md5 = 0;
+unsigned char *checksum_md5_from_data(char *data, int len) {
+    unsigned char      *checksum_md5 = 0;
     MD5_CTX   md5_ctx;
     
     MD5Init(&md5_ctx);
-    MD5Update(&md5_ctx, data, len);
+    MD5Update(&md5_ctx, (const void*)data, len);
     checksum_md5 = MALLOC(16);
     MD5Final(checksum_md5, &md5_ctx);
     return (checksum_md5);
@@ -367,7 +367,7 @@ char *build_line(char *path, char *filename, t_file_desc *info) {
 	s += sprintf(blk+s, "%s", escape_str(path));
 	
 	if (S_ISLNK(st->st_mode) && info->link)
-	    s += sprintf(blk+s, " %s", escape_str(info->link));
+	    s += sprintf(blk+s, " %s", escape_str((char*)info->link));
     }
     else {
 	if (IS(Options, GOPT_HUMAN_READABLE))

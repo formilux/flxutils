@@ -212,8 +212,8 @@ struct s_dtree {
 
 
 extern int browse_over_path(char *path, void *(*fct)(), void *data) ;
-extern char *checksum_md5_from_file(char *file) ;
-extern char *checksum_md5_from_data(char *data, int len) ;
+extern unsigned char *checksum_md5_from_file(char *file) ;
+extern unsigned char *checksum_md5_from_data(char *data, int len) ;
 extern char *end_field(char *line) ;
 extern int mkdir_with_parent(char *pathname, mode_t mode) ;
 extern char *build_line(char *path, char *filename, t_file_desc *info) ;

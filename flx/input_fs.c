@@ -47,7 +47,7 @@ static t_file_desc *complete_info_from_fs(char *path, t_file_desc *desc) {
                 PFERROR("readlink(%s)", path);
             } else {
                 temp[l] = 0;
-                desc->link = strdup(temp);
+                desc->link = (unsigned char*)strdup(temp);
                 desc->md5 = checksum_md5_from_data(temp, l);
             }
         }
