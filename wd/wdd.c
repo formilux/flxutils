@@ -6,6 +6,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <fcntl.h>
+#include <stdlib.h>
+#include <sys/wait.h>
 
 const char dev_wd_str[] = "/dev/watchdog";	/* standard entry */
 const char dev_misc_str[] = "/dev/misc/watchdog";  /* devfs entry */
@@ -19,7 +21,7 @@ const char root_str[] = "/";
 static inline void try_malloc() {
     void *heap;
 
-    heap = (void*)sbrk(NULL);
+    heap = (void*)sbrk(0);
     if (brk(heap + 4096))
 	exit(1);
     memset(heap, 0, 4096);
@@ -53,7 +55,7 @@ static inline int try_stat(const char *file, int do_exit) {
     void *heap;
     int ret;
 
-    heap = (void*)sbrk(NULL);
+    heap = (void*)sbrk(0);
     if (brk(heap + sizeof (struct stat)))
 	exit(1);
     memset(heap, 0, sizeof (struct stat));
