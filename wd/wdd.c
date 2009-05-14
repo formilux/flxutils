@@ -8,6 +8,8 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include <sys/wait.h>
+#include <unistd.h>
+#include <string.h>
 
 const char dev_wd_str[] = "/dev/watchdog";	/* standard entry */
 const char dev_misc_str[] = "/dev/misc/watchdog";  /* devfs entry */
