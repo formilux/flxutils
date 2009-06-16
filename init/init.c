@@ -1802,11 +1802,14 @@ int main(int argc, char **argv, char **envp) {
 		     * to do the real work, and the other one to maintain the session
 		     * open, and to wait for the flush (nearly immediate).
 		     */
-		    setsid();
-		    setpgrp();
-		    tcsetpgrp(0, getpgrp());
-		    ioctl(0, TIOCSCTTY, 1); // become the controlling tty, allow Ctrl-C
 
+		    /* become session leader and steal the tty */
+		    if (setsid() != -1)
+			    ioctl(0, TIOCSCTTY, 1);
+
+		    /* set this terminal to our process group */
+		    tcsetpgrp(0, getpgrp());
+			
 		    exec_args = cfg_args + 1;
 		    if (token == TOK_RX) {
 			    chroot(*exec_args);
@@ -1816,6 +1819,13 @@ int main(int argc, char **argv, char **envp) {
 
 		    res = (token == TOK_BR) ? 0 : fork();
 		    if (res == 0) {
+			    /* child: become session leader and steal the tty again */
+			    if (setsid() != -1)
+				    ioctl(0, TIOCSCTTY, 1);
+
+			    /* set this terminal to our process group */
+			    tcsetpgrp(0, getpgrp());
+			
 			    execve(exec_args[0], exec_args, envp);
 			    print("<E>xec(child) : execve() failed\n");
 			    //printf("after execve(%s)!\n", exec_args[0]);
@@ -1828,6 +1838,16 @@ int main(int argc, char **argv, char **envp) {
 
 			    ret = waitpid(res, &status, 0);
 			    //printf("waitpid returned %d,0x%08x\n", ret, status);
+
+			    /* we want to regain control of our terminal by stopping 
+			     * all possible remaining processes which might still own
+			     * the terminal. For this, we take ownership of the terminal,
+			     * which will at the same time send a SIGTTOU to all other
+			     * remaining processes in the same group, then we die so
+			     * init will be the only remaining process on the terminal.
+			     */
+			    ioctl(0, TIOCSCTTY, 1); /* steal the tty again */
+			    tcsetpgrp(0, getpgrp());
 
 			    /* wait for the stdout queue to flush */
 			    while (1) {
