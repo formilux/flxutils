@@ -1803,7 +1803,7 @@ int main(int argc, char **argv, char **envp) {
 		     * open, and to wait for the flush (nearly immediate).
 		     */
 
-		    /* become session leader and steal the tty */
+		    /* create a session, become the session leader and steal the tty */
 		    if (setsid() != -1)
 			    ioctl(0, TIOCSCTTY, 1);
 
@@ -1817,15 +1817,14 @@ int main(int argc, char **argv, char **envp) {
 			    exec_args++;
 		    }
 
+		    /* now we want one pid for the cleaner and another one for the job */
 		    res = (token == TOK_BR) ? 0 : fork();
 		    if (res == 0) {
-			    /* child: become session leader and steal the tty again */
-			    if (setsid() != -1)
-				    ioctl(0, TIOCSCTTY, 1);
-
-			    /* set this terminal to our process group */
-			    tcsetpgrp(0, getpgrp());
-			
+			    /* This is the real process. It must be attached to the terminal
+			     * and in its own group. This must be done in this exact order.
+			     */
+			    tcsetpgrp(0, getpid());
+			    setpgid(0, getpid());
 			    execve(exec_args[0], exec_args, envp);
 			    print("<E>xec(child) : execve() failed\n");
 			    //printf("after execve(%s)!\n", exec_args[0]);
@@ -1836,28 +1835,23 @@ int main(int argc, char **argv, char **envp) {
 			    int ret, rem;
 			    int status;
 
+			    strcpy(argv[0], "init: terminal cleaner");
+
 			    ret = waitpid(res, &status, 0);
-			    //printf("waitpid returned %d,0x%08x\n", ret, status);
 
-			    /* we want to regain control of our terminal by stopping 
-			     * all possible remaining processes which might still own
-			     * the terminal. For this, we take ownership of the terminal,
-			     * which will at the same time send a SIGTTOU to all other
-			     * remaining processes in the same group, then we die so
-			     * init will be the only remaining process on the terminal.
+			    /* tcdrain() does not appear to work, let's wait
+			     * for the terminal to finish writing output data.
 			     */
-			    ioctl(0, TIOCSCTTY, 1); /* steal the tty again */
-			    tcsetpgrp(0, getpgrp());
-
-			    /* wait for the stdout queue to flush */
+			    //tcdrain(0);
 			    while (1) {
-				    if (ioctl(0, TIOCOUTQ, &rem) < 0)
-					    break;
-				    if (rem == 0)
-					    break;
-				    sched_yield();
+			    	    if (ioctl(0, TIOCOUTQ, &rem) < 0)
+			    		    break;
+			    	    if (rem == 0)
+			    		    break;
+			    	    sched_yield();
 			    }
 
+			    /* forward the error code we got */
 			    exit(((ret == -1) || !WIFEXITED(status)) ?
 				 1 : WEXITSTATUS(status));
 		    }
