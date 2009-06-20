@@ -213,6 +213,10 @@ wrong for now:
 #define MS_MOVE		8192
 #endif
 
+#ifndef O_LARGEFILE
+#define O_LARGEFILE 0
+#endif
+
 #define STR_SECT ".rodata"
 
 #ifdef DEBUG
