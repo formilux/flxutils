@@ -50,7 +50,7 @@ static char *usage_msg =
 #include <errno.h>
 
 #include <asm/types.h>
-#include <asm/unaligned.h>
+#include "unaligned.h"
 
 #if defined(__linux__)  &&  __GNU_LIBRARY__ == 1
 #include <asm/io.h>			/* Newer libraries use <sys/io.h> instead. */
