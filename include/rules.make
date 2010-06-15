@@ -18,7 +18,7 @@ all:	$(OBJS)
 	$(STRIP) -x --strip-unneeded -R .comment -R .note $@
 	$(OBJDUMP) -h $@ | grep -q '\.data[ ]*00000000' && $(STRIP) -R .data $@ || true
 	$(OBJDUMP) -h $@ | grep -q '\.sbss[ ]*00000000' && $(STRIP) -R .sbss $@ || true
-	-if [ -n "$(SSTRIP)" ]; then $(SSTRIP) $@ ; fi
+	#-if [ -n "$(SSTRIP)" ]; then $(SSTRIP) $@ ; fi
 
 %-debug:	%.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -DDEBUG -o $@ $<
