@@ -2,7 +2,7 @@ OBJS=ifenslave-1.0.11 ifenslave-1.0.12 ifenslave-1.1.0 ifenslave
 include ../include/rules.make
 CC := $(CC_ORIG)
 CFLAGS+=-Wstrict-prototypes
-CFLAGS+=-D__uint32_t=uint32_t -D__uint16_t=uint16_t -D__uint8_t=uint8_t -Dcaddr_t=char*
+#CFLAGS+=-D__uint32_t=uint32_t -D__uint16_t=uint16_t -D__uint8_t=uint8_t -Dcaddr_t=char*
 #CFLAGS+=-Wstrict-prototypes -I/usr/src/linux/include -momit-leaf-frame-pointer
 
 all:	$(OBJS)
