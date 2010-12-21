@@ -2,10 +2,10 @@ CC      ?= gcc
 STRIP   ?= strip
 OBJDUMP ?= objdump
 SSTRIP  ?= sstrip
-DIET	?= diet
+UCLIBC	?= uclibc
 
 CC_ORIG := $(CC)
-override CC := $(DIET) $(CC)
+override CC := $(UCLIBC) $(CC) -Os
 
 CFLAGS=$(GCC_ARCH_SMALL) $(GCC_CPU_SMALL) $(GCC_OPT_SMALL)
 #-mpreferred-stack-boundary=2 -malign-jumps=0 -malign-loops=0 -malign-functions=0 -Os -march=i386 -mcpu=i386
