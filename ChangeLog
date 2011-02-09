@@ -1,3 +1,13 @@
+2011/02/09
+- released flxutils-0.1.34-flx0.1
+- scripts/pcidev: add support for exclude/only {vid/pid/module}
+- scripts: add hotplug
+- BUILD: disable sstrip in makefiles
+- mii-diag: rely on a local copy of unaligned.h
+- init: define O_LARGEFILE in order to build with embedded toolchains
+- init: fix terminal flushing after fork
+- init: fix tty setting issues with Ctrl-C
+
 2009/03/16
 - flxutils-0.1.33-flx0.1
 - pcidev: add support for matching multiple classes
