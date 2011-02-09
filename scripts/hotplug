@@ -1,0 +1,24 @@
+#!/bin/sh
+
+# to be installed as /sbin/hotplug
+
+if [ "$1" = "firmware" ]; then
+  if [ "$(cat /sys/class/firmware/timeout 2>/dev/null)" = "60" ]; then
+    echo 1 > /sys/class/firmware/timeout
+  fi
+  file="/lib/firmware/$FIRMWARE"
+  [ -s "/boot/firmware/$FIRMWARE" ] && file="/boot/firmware/$FIRMWARE"
+  [ -s "/etc/firmware/$FIRMWARE" ] && file="/etc/firmware/$FIRMWARE"
+  [ -s "/tmp/$FIRMWARE" ] && file="/tmp/$FIRMWARE"
+  if [ -s "$file" ]; then
+    echo 1 >/sys/$DEVPATH/loading
+    cat $file >/sys/$DEVPATH/data
+    echo 0 >/sys/$DEVPATH/loading
+  else
+    exit 1
+  fi
+else
+  echo -1 >/sys/$DEVPATH/loading
+fi
+exit 0
+
