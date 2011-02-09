@@ -4,11 +4,12 @@
 #B
 # Formilux 0.1.8 - http://www.ant-computing.com/
 # PCIDEV - PCI device drivers scanner version 0.5
-# 2008/12/09 - Willy Tarreau - willy@ant-computing.com
+# 2011/02/09 - Willy Tarreau - willy@ant-computing.com
 # May be redistributed under the terms of the GPL.
 #
 # usage :
 #   pcidev [-vnm] [-c class/mask]* [path to modules.pcimap]
+#          [-[eo]v vid]* [-[eo]p vid:pid]* [-[eo]m mod]*
 # examples :
 #   pcidev /lib/modules/`uname -r`/modules.pcimap
 #   pcidev -v -n -m -c 0x200000/0xffff00
@@ -30,6 +31,12 @@ ONLYNEW=0
 VERBOSE=0
 ONLYCLASS=( )
 ONLYMASK=( )
+ONLYVID=( )
+ONLYPID=( )
+ONLYMOD=( )
+EXCLVID=( )
+EXCLPID=( )
+EXCLMOD=( )
 MAPFILE=
 NBCLASS=0
 PCIDEVDIR=/proc/bus/pci
@@ -61,8 +68,32 @@ while [ $# -gt 0 ]; do
 	 MODPROBE=1
 	 ONLYNEW=1
 	 ;;
+      -ov)
+         ONLYVID[${#ONLYVID}]="|$(printf "%04x" 0x$2)|"
+	 shift
+	 ;;
+      -op)
+         ONLYPID[${#ONLYPID}]="|$(printf "%04x:%04x" 0x${2%:*} 0x${2#*:})|"
+	 shift
+	 ;;
+      -om)
+         ONLYMOD[${#ONLYMOD}]="|$2|"
+	 shift
+	 ;;
+      -ev)
+         EXCLVID[${#EXCLVID}]="|$(printf "%04x" 0x$2)|"
+	 shift
+	 ;;
+      -ep)
+         EXCLPID[${#EXCLPID}]="|$(printf "%04x:%04x" 0x${2%:*} 0x${2#*:})|"
+	 shift
+	 ;;
+      -em)
+         EXCLMOD[${#EXCLMOD}]="|$2|"
+	 shift
+	 ;;
       -*)
-	 sed -e '/^#B/,/^#E/!d' --e 's/^#.\?//' < $0
+	 sed -e '/^#B/,/^#E/!d' -e 's/^#.\?//' < $0
 	 exit 1
 	 ;;
       *)
@@ -122,6 +153,16 @@ for device in $pcidev; do
 	[ $cid -lt $NBCLASS ] || continue
     fi
 
+    # check if we want to exclude certain VID/PID from loading, or if we want
+    # to restrict only to some of them.
+    [ -n "${EXCLVID}" -a -z "${EXCLVID[*]##*|$vid|*}" ] && continue
+    [ -n "${EXCLVID}" -a -z "${EXCLVID[*]##*|$svid|*}" ] && continue
+    [ -n "${EXCLPID}" -a -z "${EXCLPID[*]##*|$vid:$pid|*}" ] && continue
+    [ -n "${EXCLPID}" -a -z "${EXCLPID[*]##*|$svid:$spid|*}" ] && continue
+    
+    [ -z "${ONLYVID}" -o -z "${ONLYVID[*]##*|$vid|*}" -o -z "${ONLYVID[*]##*|$svid|*}" ] || continue
+    [ -z "${ONLYPID}" -o -z "${ONLYPID[*]##*|$vid:$pid|*}" -o -z "${ONLYPID[*]##*|$svid:$spid|*}" ] || continue
+    
     # if we only list new modules and the module is the same as
     # previous one, don't list it (common with network cards)
     [ $ONLYNEW -gt 0 -a "$xclass" = "0x$class" -a \
@@ -145,6 +186,8 @@ for device in $pcidev; do
 	    (( $f2 != 0xffffffff || $f3 != 0xffffffff ||
 	       $f4 != 0xffffffff || $f5 != 0xffffffff ||
 	       $f6 != 0x00060400 )) || continue
+	    [ -n "${EXCLMOD}" -a -z "${EXCLMOD[*]##*|$f1|*}" ] && continue
+	    [ -z "${ONLYMOD}" -o -z "${ONLYMOD[*]##*|$f1|*}" ] || continue
 	    list="$list$f1 "
 	done < $MAPFILE
     fi
@@ -173,11 +216,16 @@ for device in $pcidev; do
 		fi
 	    fi
 	else
-	    echo "##none## $dev($entry) $class $vid $pid $svid $spid $irq $list"
+	    if [ -z "${ONLYMOD}" ]; then
+		echo "##none## $dev($entry) $class $vid $pid $svid $spid $irq $list"
+	    fi
 	fi
     else
 	if [ $ONLYNEW -eq 0 ]; then
-	    echo "$driver $dev($entry) $class $vid $pid $svid $spid $irq $list"
+	    if [ -z "${ONLYMOD}" -o -z "${ONLYMOD[*]##*|$driver|*}" ] &&
+	       [ -z "${EXCLMOD}" -o -n "${EXCLMOD[*]##*|$driver|*}" ]; then
+		echo "$driver $dev($entry) $class $vid $pid $svid $spid $irq $list"
+	    fi
 	fi
     fi
 done
