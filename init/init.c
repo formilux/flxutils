@@ -256,7 +256,7 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_cm
 //static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init[] = "sbin/init";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init_sysv[] = "sbin/init-sysv";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_linuxrc[] = "/.linuxrc";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_options[] = "size=0,nr_inodes=4096,mode=755";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_options[] = "size=4k,nr_inodes=4096,mode=755";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str__linuxrc[] = "/linuxrc";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_dir[]  = "/proc";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) devtmpfs_fs[]  = "devtmpfs";
