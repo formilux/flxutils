@@ -16,6 +16,7 @@
 #include "flx.h"
 #include "utils.h"
 
+#include "md5.h"
 
 /* function that complete desc from file system informations */
 t_file_desc *complete_info_from_file(char *path, t_file_desc *desc, int flag) {
@@ -233,14 +234,14 @@ char *checksum_md5_from_file(char *file) {
 	PFERROR("open(%s) for MD5 checksum", file);
     } 
     else {
-	MD5_Init(&md5_ctx);
+	MD5Init(&md5_ctx);
 	while ((size = read(fd, blk, BUFFER_LENGTH)) > 0)
-	    MD5_Update(&md5_ctx, blk, size);
+	    MD5Update(&md5_ctx, blk, size);
 	close(fd);
         // if size = -1, there is a read error, don't do anything
         if (size == 0) { // last read is null
 	    checksum_md5 = MALLOC(16);
-	    MD5_Final(checksum_md5, &md5_ctx);
+	    MD5Final(checksum_md5, &md5_ctx);
         }
     }
     return (checksum_md5);
@@ -251,10 +252,10 @@ char *checksum_md5_from_data(char *data, int len) {
     char      *checksum_md5 = 0;
     MD5_CTX   md5_ctx;
     
-    MD5_Init(&md5_ctx);
-    MD5_Update(&md5_ctx, data, len);
+    MD5Init(&md5_ctx);
+    MD5Update(&md5_ctx, data, len);
     checksum_md5 = MALLOC(16);
-    MD5_Final(checksum_md5, &md5_ctx);
+    MD5Final(checksum_md5, &md5_ctx);
     return (checksum_md5);
 }
 

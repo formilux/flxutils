@@ -12,10 +12,6 @@
 
 #define DUMPBASENAME     "formilux-sig.dat"
 
-#define MD5_Init(ctx)                 ToolsMD5Init(ctx)
-#define MD5_Update(ctx, data, len)    ToolsMD5Update(ctx, data, len)
-#define MD5_Final(data, ctx)          ToolsMD5Final(data, ctx)
-
 #define O4(a) (htonl(*(int*)(a)))
 
 #define MATCH(f,m)  (!strcmp(f, m))
