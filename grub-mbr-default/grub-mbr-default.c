@@ -168,6 +168,7 @@ int main(int argc, char **argv) {
 
     if (!quiet)
 	printf("Next boot entry changed to #%d\n", new_entryno);
+    fsync(fd);
     close(fd);
     exit(0);
 }
