@@ -259,10 +259,11 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_lin
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_options[] = "size=0,nr_inodes=4096,mode=755";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str__linuxrc[] = "/linuxrc";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_dir[]  = "/proc";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) tmpfs_fs[]  = "tmpfs";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) devtmpfs_fs[]  = "devtmpfs";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_root[]  = "dev/root";
 
 
+#define tmpfs_fs	(devtmpfs_fs + 3)	// static const char tmpfs_fs(] = "tmpfs";
 #define tmp_name	(var_tmp + 4)		// static const char tmp_name[]  = "/tmp";
 #define proc_fs		(proc_dir+1)		// static const char proc_fs[]  = "proc";
 #define fd_dir		(proc_self_fd + 11)	// static const char fd_dir[]  = "fd";
@@ -849,7 +850,7 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp) {
 static inline int mknod_chown(mode_t mode, uid_t uid, gid_t gid, uchar major, uchar minor, char *name) {
     int error;
 
-    if (mknod(name, mode, makedev(major, minor)) == -1) {
+    if (mknod(name, mode, makedev(major, minor)) == -1 && chmod(name, mode) == -1) {
 	error = 1;
 	print("init/error : mknod("); print(name); print(") failed\n");
     }
@@ -1313,7 +1314,8 @@ int main(int argc, char **argv, char **envp) {
 #ifndef I_AM_REALLY_DEBUGGING
 	if (linuxrc || stat(dev_console, &statf) == -1) {
 	    print("init/info: /dev/console not found, rebuilding /dev.\n");
-	    if (mount(dev_name, dev_name, tmpfs_fs, MS_MGC_VAL, dev_options) == -1)
+	    if (mount(dev_name, dev_name, devtmpfs_fs, MS_MGC_VAL, dev_options) == -1 &&
+		mount(dev_name, dev_name, tmpfs_fs, MS_MGC_VAL, dev_options) == -1)
 		print("init/err: cannot mount /dev.\n");
 	    else {
 		int i;
