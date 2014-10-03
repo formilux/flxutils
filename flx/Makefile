@@ -31,7 +31,7 @@ SRC=main.c arg.c utils.c md5.c flx.c fct1.c check.c sign.c \
     input.c input_fs.c input_file.c \
     output.c output_file.c
 OBJ=$(SRC:.c=.o)
-COPTS=-O2
+COPTS=-O2 -fno-strict-aliasing
 CFLAGS= -Wall $(COPTS) -DMEM_OPTIM -DPROGRAM_NAME=\"$(NAME)\" -DPROGRAM_VERSION=\"$(VERSION)\" -U_FORTIFY_SOURCE
 LDFLAGS=-L. -Wl,--gc-sections
 
