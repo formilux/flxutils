@@ -1,5 +1,6 @@
 /* simply write all args to /dev/lcd, and don't complain if it doesn't work */
 #include <sys/fcntl.h>
+#include <string.h>
 
 main(int argc, char **argv) {
   int fd;
