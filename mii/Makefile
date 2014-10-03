@@ -1,4 +1,4 @@
-OBJS=starfire-diag tulip-diag mii-diag
+OBJS=mii-diag
 include ../include/rules.make
 CC := $(CC_ORIG)
 #CFLAGS+=-momit-leaf-frame-pointer
