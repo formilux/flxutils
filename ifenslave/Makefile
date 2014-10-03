@@ -7,9 +7,6 @@ CFLAGS+=-Wstrict-prototypes
 
 all:	$(OBJS)
 
-clean:
-	rm -vf $(OBJS) core *.[oa] *~
-
 ifenslave:
 	rm -f ifenslave
 	ln -s ifenslave-1.0.12 ifenslave
