@@ -21,7 +21,9 @@
  */
 #include <stdio.h>
 #include <unistd.h>
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <errno.h>
 
 #define writetxt(fd, text) write(fd, text, strlen(text))
@@ -64,7 +66,8 @@ void usage() {
 }
 
 main(int argc, char **argv) {
-    char *text, *prefix;
+    const char *prefix;
+    char *text;
     char *directory;
     char *fullname;
     int len, num = 0, ret;
