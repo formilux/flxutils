@@ -364,7 +364,6 @@ int         input_file_fcntl(t_file_status *env, int cmd) {
 t_file_status  *input_file_open(char *pathname, char *opts) {
     t_file_status  *new;
     char           *filename;
-    int            status;
     char           tmp[BUFFER_LENGTH];
     char           *ppath, *popts, *pvalue;
     int            options = (OPT_SORTED|OPT_READ);
@@ -401,7 +400,6 @@ t_file_status  *input_file_open(char *pathname, char *opts) {
     new->options = options;
     /* looking for separator before filename */
     if (ppath && (ppath = backslashed_strmchr(ppath, DELIM_LIST))) {
-	status = *ppath;
 	*ppath++ = 0;
     }
     

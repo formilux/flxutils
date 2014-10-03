@@ -163,7 +163,7 @@ int         output_file_fcntl(t_file_status *env, int cmd) {
 t_file_status  *output_file_open(char *pathname, char *opts) {
     t_file_status  *new;
     char           *filename;
-    int            status, ret;
+    int            ret;
     char           tmp[BUFFER_LENGTH];
     char           *ppath, *popts, *pvalue;
     int            options = (OPT_SORTED|OPT_WRITE);
@@ -207,9 +207,8 @@ t_file_status  *output_file_open(char *pathname, char *opts) {
 	new->options = options;
 
     filename = ppath;
-    if (ppath && (ppath = backslashed_strmchr(ppath, DELIM_LIST))) {
-	status = *ppath++;
-    }
+    if (ppath)
+	ppath = backslashed_strmchr(ppath, DELIM_LIST);
 
     SET(new->status, STAT_VIEWSORTED); /* default is sorted */
     SET(new->status, STAT_DOINIT);
