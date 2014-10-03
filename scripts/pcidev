@@ -155,13 +155,13 @@ for device in $pcidev; do
 
     # check if we want to exclude certain VID/PID from loading, or if we want
     # to restrict only to some of them.
-    [ -n "${EXCLVID}" -a -z "${EXCLVID[*]##*|$vid|*}" ] && continue
-    [ -n "${EXCLVID}" -a -z "${EXCLVID[*]##*|$svid|*}" ] && continue
-    [ -n "${EXCLPID}" -a -z "${EXCLPID[*]##*|$vid:$pid|*}" ] && continue
-    [ -n "${EXCLPID}" -a -z "${EXCLPID[*]##*|$svid:$spid|*}" ] && continue
+    [ -n "${EXCLVID}" -a "${EXCLVID[*]##*|$vid|*}" != "${EXCLVID[*]}" ] && continue
+    [ -n "${EXCLVID}" -a "${EXCLVID[*]##*|$svid|*}" != "${EXCLVID[*]}" ] && continue
+    [ -n "${EXCLPID}" -a "${EXCLPID[*]##*|$vid:$pid|*}" != "${EXCLPID[*]}" ] && continue
+    [ -n "${EXCLPID}" -a "${EXCLPID[*]##*|$svid:$spid|*}" != "${EXCLPID[*]}" ] && continue
     
-    [ -z "${ONLYVID}" -o -z "${ONLYVID[*]##*|$vid|*}" -o -z "${ONLYVID[*]##*|$svid|*}" ] || continue
-    [ -z "${ONLYPID}" -o -z "${ONLYPID[*]##*|$vid:$pid|*}" -o -z "${ONLYPID[*]##*|$svid:$spid|*}" ] || continue
+    [ -z "${ONLYVID}" -o "${ONLYVID[*]##*|$vid|*}" != "${ONLYVID[*]}" -o "${ONLYVID[*]##*|$svid|*}" != "${ONLYVID[*]}" ] || continue
+    [ -z "${ONLYPID}" -o "${ONLYPID[*]##*|$vid:$pid|*}" != "${ONLYPID[*]}" -o "${ONLYPID[*]##*|$svid:$spid|*}" != "${ONLYPID[*]}" ] || continue
     
     # if we only list new modules and the module is the same as
     # previous one, don't list it (common with network cards)
@@ -186,8 +186,8 @@ for device in $pcidev; do
 	    (( $f2 != 0xffffffff || $f3 != 0xffffffff ||
 	       $f4 != 0xffffffff || $f5 != 0xffffffff ||
 	       $f6 != 0x00060400 )) || continue
-	    [ -n "${EXCLMOD}" -a -z "${EXCLMOD[*]##*|$f1|*}" ] && continue
-	    [ -z "${ONLYMOD}" -o -z "${ONLYMOD[*]##*|$f1|*}" ] || continue
+	    [ -n "${EXCLMOD}" -a "${EXCLMOD[*]##*|$f1|*}" != "${EXCLMOD[*]}" ] && continue
+	    [ -z "${ONLYMOD}" -o "${ONLYMOD[*]##*|$f1|*}" != "${ONLYMOD[*]}" ] || continue
 	    list="$list$f1 "
 	done < $MAPFILE
     fi
@@ -222,8 +222,8 @@ for device in $pcidev; do
 	fi
     else
 	if [ $ONLYNEW -eq 0 ]; then
-	    if [ -z "${ONLYMOD}" -o -z "${ONLYMOD[*]##*|$driver|*}" ] &&
-	       [ -z "${EXCLMOD}" -o -n "${EXCLMOD[*]##*|$driver|*}" ]; then
+	    if [ -z "${ONLYMOD}" -o "${ONLYMOD[*]##*|$driver|*}" != "${ONLYMOD[*]}" ] &&
+	       [ -z "${EXCLMOD}" -o "${EXCLMOD[*]##*|$driver|*}" == "${EXCLMOD[*]}" ]; then
 		echo "$driver $dev($entry) $class $vid $pid $svid $spid $irq $list"
 	    fi
 	fi
