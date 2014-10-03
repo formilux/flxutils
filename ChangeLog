@@ -1,3 +1,39 @@
+2014/10/03
+- released flxutils-0.1.35
+- BUILD: disable old header checking in flx
+- flx: replace md5 implementation with official one to fix 64-bit behaviour
+- grub-mbr-default: import from the grub package
+- BUILD: add grub-mbr-default to the SUBDIRS
+- grub-mbr-default: sync data on disk before closing.
+- init: add support for devtmpfs at boot
+- flx: ignore *.o and flx
+- flx: fix implicit declaration of function 'exit'
+- flx: Fix gcc-4.3 'declared with attribute warn_unused_result'
+- flx: Fix signedness warnings
+- remount: sstrip is not available everywhere
+- wdd: add a conditional sstrip and add more warnings
+- wdd: ignore binary
+- wdd: fix warnings
+- wdd: Fix warnings when builded with gcc-4.3 and without diet (FORTIFY_SOURCE)
+- wdd: fix sbrk & mem* warnings
+- init: needs -D_GNU_SOURCE on recent compilers
+- ifenslave: don't define anymore types present in stdint.h
+- rules.make: replace "diet" with "uclibc"
+- mii: define the __force macro
+- init: tmpfs doesn't support "size=0" on recent kernels
+- init: remove -mno-omit-leaf-frame-pointer from CFLAGS
+- scripts/pcidev: minor cleanup
+- scripts/pcidev: fix a major bug in modules exclusion/filtering
+- build: rename .flxpkg to old-flxpkg
+- findcdrom: fix build warnings
+- mktmp: fix build warnings
+- remountr: fix build warnings
+- lcdwrite: fix build warning
+- flx/md5: fix several build warnings
+- flx: fix warnings about unused variables
+- ifenslave/Makefile: remove the duplicate "clean" rule
+
+
 2011/02/09
 - released flxutils-0.1.34-flx0.1
 - scripts/pcidev: add support for exclude/only {vid/pid/module}
