@@ -137,7 +137,7 @@ for device in $pcidev; do
     # now construct in <entry> a 16 bits entry for pci/devices from $dev, with
     # bus in $1, slot in $2, func in $3
     set -- ${dev//[.\/]/ }
-    entry=$(printf "%s%02x" "$1" $(((0x$2<<3)+0x$3)))
+    entry=$(printf "%s%02x" "$1" $(((0x$2*8)+0x$3)))
 
     # look for a registered device in /proc/bus/pci/devices
     set -- `grep "^$entry" $PCIDEVDIR/devices`
