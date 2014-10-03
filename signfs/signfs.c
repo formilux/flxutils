@@ -179,7 +179,7 @@ t_fileinfo *fill_fileinfo(char *filename, char *pfilename,
 	    pferror("open(%s) for checksum",SPD(filename));
 	} else {
 	    MD5_Init(&c);
-	    while ((s=read(fd,blk,8192))>0) MD5_Update(&c,blk,s);
+	    while ((s=read(fd,blk,8192))>0) MD5_Update(&c,(unsigned char *)blk,s);
 	    MD5_Final(data->md5sum,&c);
 	    close(fd);
 	    data->have_md5=1;
@@ -191,7 +191,7 @@ t_fileinfo *fill_fileinfo(char *filename, char *pfilename,
 	} else {
             blk[l]=0;
 	    MD5_Init(&c);
-	    MD5_Update(&c,blk,l);
+	    MD5_Update(&c,(unsigned char *)blk,l);
 	    MD5_Final(data->md5sum,&c);
 	    data->have_md5=1;
 	    data->link=strdup(blk);
