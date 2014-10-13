@@ -1224,7 +1224,7 @@ int main(int argc, char **argv, char **envp) {
     int rebuild;
     int token;
     int cmd_input = INPUT_FILE;
-    static char cmd_line[256]; /* one line of config from the prompt */
+    char cmd_line[256]; /* one line of config from the prompt */
     struct stat statf;
     //    char *cmdline_arg;
     char *cfg_file;
@@ -1376,7 +1376,7 @@ int main(int argc, char **argv, char **envp) {
 	    if (cmd_input == INPUT_KBD) {
 		int len;
 		char *cmd_ptr = cmd_line;
-		static char prompt[sizeof(cmd_line) + MAX_BRACE_LEVEL + 4];
+		char prompt[sizeof(cmd_line) + MAX_BRACE_LEVEL + 4];
 		char *p = prompt;
 		int lev1, lev2;
 
