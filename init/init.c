@@ -1376,7 +1376,7 @@ int main(int argc, char **argv, char **envp) {
 	    if (cmd_input == INPUT_KBD) {
 		int len;
 		char *cmd_ptr = cmd_line;
-		static char prompt[MAX_BRACE_LEVEL + 4];
+		static char prompt[sizeof(cmd_line) + MAX_BRACE_LEVEL + 4];
 		char *p = prompt;
 		int lev1, lev2;
 
