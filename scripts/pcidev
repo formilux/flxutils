@@ -121,6 +121,7 @@ fi
 
 oldlist=; xpid=; xvid=; xsvid=; xspid=; xclass=
 for device in $pcidev; do
+    [ -e "$device" ] || continue
     x=${device%??/??.?}
     dev=${device#$x}
     set -- `od -v -tx1 -An $device`
