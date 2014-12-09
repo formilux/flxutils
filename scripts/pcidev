@@ -177,7 +177,12 @@ for device in $pcidev; do
     # they tend to pop up everywhere there is a bridge.
     if [ ! -z "$MAPFILE" -a -s "${MAPFILE%.pcimap}.alias" ]; then
         alias=$(printf "pci:v%08Xd%08Xsv%08Xsd%08Xbc%02Xsc%02Xi%02X" $xvid $xpid $xsvid $xspid $(((xclass >> 16) & 0xff)) $(((xclass >> 8) & 0xff)) $((xclass & 0xff)))
-	list=$(modprobe -R "$alias")
+        list=""
+        for f1 in $(modprobe -R "$alias"); do
+            [ -n "${EXCLMOD}" -a "${EXCLMOD[*]##*|$f1|*}" != "${EXCLMOD[*]}" ] && continue
+            [ -z "${ONLYMOD}" -o "${ONLYMOD[*]##*|$f1|*}" != "${ONLYMOD[*]}" ] || continue
+            list="$list$f1 "
+        done
     elif [ ! -z "$MAPFILE" ]; then
 	list=""
 	while read f1 f2 f3 f4 f5 f6 f7 rest; do
