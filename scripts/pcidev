@@ -175,7 +175,10 @@ for device in $pcidev; do
     # look for modules supporting these devices. We exclude the rare modules
     # which pretend to support any vendor/product/subsys for PCI bridges because
     # they tend to pop up everywhere there is a bridge.
-    if [ ! -z "$MAPFILE" ]; then
+    if [ ! -z "$MAPFILE" -a -s "${MAPFILE%.pcimap}.alias" ]; then
+        alias=$(printf "pci:v%08Xd%08Xsv%08Xsd%08Xbc%02Xsc%02Xi%02X" $xvid $xpid $xsvid $xspid $(((xclass >> 16) & 0xff)) $(((xclass >> 8) & 0xff)) $((xclass & 0xff)))
+	list=$(modprobe -R "$alias")
+    elif [ ! -z "$MAPFILE" ]; then
 	list=""
 	while read f1 f2 f3 f4 f5 f6 f7 rest; do
 	    [ "$f1" != "#" -a -n "$f7" ] || continue
