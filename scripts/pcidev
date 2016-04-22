@@ -69,27 +69,27 @@ while [ $# -gt 0 ]; do
 	 ONLYNEW=1
 	 ;;
       -ov)
-         ONLYVID[${#ONLYVID}]="|$(printf "%04x" 0x$2)|"
+         ONLYVID[${#ONLYVID[*]}]="|$(printf "%04x" 0x$2)|"
 	 shift
 	 ;;
       -op)
-         ONLYPID[${#ONLYPID}]="|$(printf "%04x:%04x" 0x${2%:*} 0x${2#*:})|"
+         ONLYPID[${#ONLYPID[*]}]="|$(printf "%04x:%04x" 0x${2%:*} 0x${2#*:})|"
 	 shift
 	 ;;
       -om)
-         ONLYMOD[${#ONLYMOD}]="|$2|"
+         ONLYMOD[${#ONLYMOD[*]}]="|$2|"
 	 shift
 	 ;;
       -ev)
-         EXCLVID[${#EXCLVID}]="|$(printf "%04x" 0x$2)|"
+         EXCLVID[${#EXCLVID[*]}]="|$(printf "%04x" 0x$2)|"
 	 shift
 	 ;;
       -ep)
-         EXCLPID[${#EXCLPID}]="|$(printf "%04x:%04x" 0x${2%:*} 0x${2#*:})|"
+         EXCLPID[${#EXCLPID[*]}]="|$(printf "%04x:%04x" 0x${2%:*} 0x${2#*:})|"
 	 shift
 	 ;;
       -em)
-         EXCLMOD[${#EXCLMOD}]="|$2|"
+         EXCLMOD[${#EXCLMOD[*]}]="|$2|"
 	 shift
 	 ;;
       -*)
