@@ -470,6 +470,11 @@ static void my_memmove(char *dst, const char *src, int len)
 	}
 }
 
+static void my_strcpy(char *dst, const char *src)
+{
+	while ((*dst++ = *src++));
+}
+
 /*
  * copies at most <size-1> chars from <src> to <dst>. Last char is always
  * set to 0, unless <size> is 0. The number of chars copied is returned
@@ -1865,7 +1870,7 @@ int main(int argc, char **argv, char **envp) {
 			    int ret, rem;
 			    int status;
 
-			    strcpy(argv[0], "init: terminal cleaner");
+			    my_strcpy(argv[0], "init: terminal cleaner");
 
 			    ret = waitpid(res, &status, 0);
 
