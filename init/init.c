@@ -487,11 +487,11 @@ static void reopen_console() {
 
 	fd = open(dev_console, O_RDWR); // fd = 0 (stdin) or -1 (error)
 	if (fd < 0)
-		dup(oldfd); // restore 0 from old console
+		dup2(oldfd, 0); // restore 0 from old console
 
 	close(oldfd);
-	dup(0); // stdout
-	dup(0); // stderr
+	dup2(0, 1); // stdout
+	dup2(0, 2); // stderr
 
 	print("init/info : reopened /dev/console\n");
 }
