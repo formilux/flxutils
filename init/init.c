@@ -248,6 +248,7 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_dir
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_fname[] = "/.preinit";	   /* configuration file */
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) msg_err_console[] = "Command ignored, input already bound to console !\n";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_console[] = "dev/console";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_null[] = "dev/null";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str_rebuild[] = "rebuild";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_tmp[]   = "/var/tmp";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_run[]   = "/var/run";
@@ -863,6 +864,18 @@ static inline int mknod_chown(mode_t mode, uid_t uid, gid_t gid, uchar major, uc
     return error;
 }
 
+/* return 0 if at least one entry is missing */
+static int is_dev_populated() {
+    struct stat statf;
+    int i;
+
+    if (stat(dev_console, &statf) == -1)
+        return 0;
+    if (stat(dev_null, &statf) == -1)
+        return 0;
+    return 1;
+}
+
 /* breaks a 3-fields, comma-separated string into 3 fields */
 static inline int varstr_break(char *str, char *type, char **set, uchar *scale) {
     int state;
@@ -1312,7 +1325,7 @@ int main(int argc, char **argv, char **envp) {
 	 * we don't test the presence of /dev/console.
 	 */
 #ifndef I_AM_REALLY_DEBUGGING
-	if (linuxrc || stat(dev_console, &statf) == -1) {
+	if (linuxrc || !is_dev_populated()) {
 	    print("init/info: /dev/console not found, rebuilding /dev.\n");
 	    if (mount(dev_name, dev_name, devtmpfs_fs, MS_MGC_VAL, dev_options) == -1 &&
 		mount(dev_name, dev_name, tmpfs_fs, MS_MGC_VAL, dev_options) == -1)
