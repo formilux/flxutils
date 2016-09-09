@@ -459,6 +459,17 @@ static int streq(const char *str1, const char *str2) {
     return ((c1 | *str2) == 0);
 }
 
+/* size-optimized memmove() alternative. It's 40 bytes on x86_64. */
+static void my_memmove(char *dst, const char *src, int len)
+{
+	int pos = (dst <= src) ? -1 : len;
+
+	while (len--) {
+		pos += (dst <= src) ? 1 : -1;
+		dst[pos] = src[pos];
+	}
+}
+
 /*
  * copies at most <size-1> chars from <src> to <dst>. Last char is always
  * set to 0, unless <size> is 0. The number of chars copied is returned
@@ -700,12 +711,12 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp) {
 			*p = '\r';
 		    else if (*p == 't')
 			*p = '\t';
-		    memmove(p - 1, p, cfg_line - p);
+		    my_memmove(p - 1, p, cfg_line - p);
 		} else {
 		    backslash = (*p == '\\');
 
 		    if (*p == '"') {
-			memmove(p, p + 1, cfg_line - p - 1);
+			my_memmove(p, p + 1, cfg_line - p - 1);
 			quote = !quote;
 			continue;
 		    }
@@ -779,15 +790,15 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp) {
 
 				    if ((replace && !repl) || (def_end == def_beg)) {
 					    /* empty string is conserved in replace mode */
-					    memmove(dollar_ptr, brace_end, bufend - brace_end);
+					    my_memmove(dollar_ptr, brace_end, bufend - brace_end);
 					    ofs = brace_end - dollar_ptr;
 					    p -= ofs;
 					    cfg_line -= ofs;
 					    *cfg_data = cfg_line;
 				    } else {
 					    /* empty string with alternate mode or valid string in replace mode */
-					    memmove(dollar_ptr, def_beg, def_end - def_beg);
-					    memmove(dollar_ptr + (def_end - def_beg), brace_end, bufend - brace_end);
+					    my_memmove(dollar_ptr, def_beg, def_end - def_beg);
+					    my_memmove(dollar_ptr + (def_end - def_beg), brace_end, bufend - brace_end);
 					    ofs = (def_beg - dollar_ptr) + (brace_end - def_end);
 					    p -= ofs;
 					    cfg_line -= ofs;
@@ -806,7 +817,7 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp) {
 					    ofs = bufend - brace_end;
 				    }
 
-				    memmove(dollar_ptr + l, brace_end, (bufend - brace_end) - ((ofs > 0)?ofs:0));
+				    my_memmove(dollar_ptr + l, brace_end, (bufend - brace_end) - ((ofs > 0)?ofs:0));
 				    memcpy(dollar_ptr, repl, l);
 
 				    p += ofs;
