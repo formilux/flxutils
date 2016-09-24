@@ -334,10 +334,11 @@ enum {
     TOK_DOT,	/* .  : end of config */
     TOK_UNK,	/* unknown command */
     TOK_EOF,	/* end of file */
-    TOK_COND_NEG = 0x20, /* negate the result before evaluation */
-    TOK_COND_OR  = 0x40, /* conditionnal OR */
-    TOK_COND_AND = 0x80, /* conditionnal AND */
-    TOK_COND     = 0xE0, /* any condition */
+    /* below are conditions which can be ORed with a token */
+    TOK_COND_NEG = 0x100, /* negate the result before evaluation */
+    TOK_COND_OR  = 0x200, /* conditionnal OR */
+    TOK_COND_AND = 0x400, /* conditionnal AND */
+    TOK_COND     = 0x700, /* any condition */
 };
 
 /* possible states for variable parsing */
