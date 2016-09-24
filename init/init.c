@@ -340,9 +340,6 @@ enum {
     TOK_COND     = 0xE0, /* any condition */
 };
 
-/* counts from TOK_LN to TOK_DOT */
-#define NB_TOKENS	32
-
 /* possible states for variable parsing */
 enum {
 	VAR_NONE = 0,
@@ -359,7 +356,7 @@ static const  __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     char lcmd[2]; /* long form */
     char scmd;	  /* short form */
     char minargs; /* min #args */
-} tokens[NB_TOKENS] = {
+} tokens[] = {
     "ln", 'L', 2,	/* TOK_LN */
     "md", 'D', 1,	/* TOK_MD */
     "mt", 'M', 3,	/* TOK_MT */
@@ -851,7 +848,7 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp) {
 	if (**cfg_args == '/')
 	    return TOK_EX | cond;
 
-	for (token = 0; token < NB_TOKENS; token++)
+	for (token = 0; token < sizeof(tokens) / sizeof(tokens[0]); token++)
 	    if ((!cfg_args[0][1] && tokens[token].scmd == cfg_args[0][0]) ||
 		(cfg_args[0][1] &&
 		 (tokens[token].lcmd[1] == cfg_args[0][1]) &&
