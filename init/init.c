@@ -260,6 +260,7 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_lin
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_options[] = "size=4k,nr_inodes=4096,mode=755";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str__linuxrc[] = "/linuxrc";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_dir[]  = "/proc";
+static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_mounts[]  = "/proc/mounts";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) devtmpfs_fs[]  = "devtmpfs";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_root[]  = "dev/root";
 
@@ -280,6 +281,7 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_roo
 #define	MAX_CFG_ARGS	64
 #define MAX_CMDLINE_LEN 512
 #define MAX_BRACE_LEVEL	10
+#define MAX_MNT_SIZE	1024
 
 struct dev_varstr {
     char type;
@@ -329,6 +331,8 @@ enum {
     TOK_RM,	/* rm : remove files */
     TOK_ST,	/* st : stat file existence */
     TOK_WK,	/* wk : wait key */
+    TOK_TD,	/* td : test /dev for devtmpfs support */
+    /* better add new commands above */
     TOK_OB,	/* {  : begin a command block */
     TOK_CB,	/* }  : end a command block */
     TOK_DOT,	/* .  : end of config */
@@ -387,6 +391,7 @@ static const  __attribute__ ((__section__(STR_SECT),__aligned__(1))) struct {
     "rm",   0, 1,	/* TOK_RM */
     "st",   0, 1,	/* TOK_ST */
     "wk",   0, 2,	/* TOK_WK */
+    "td",   0, 0,	/* TOK_TD */
     "{",  '{', 0,	/* TOK_OB */
     "}",  '}', 0,	/* TOK_CB */
     ".",  '.', 0,	/* TOK_DOT : put every command before this one */
@@ -426,6 +431,7 @@ static char cmdline[MAX_CMDLINE_LEN];
 static int cmdline_len;
 static char *cst_str[MAX_FIELDS];
 static char *var_str[MAX_FIELDS];
+static char mounts[MAX_MNT_SIZE];
 static struct dev_varstr var[MAX_FIELDS];
 static int error; /* an error has emerged from last operation */
 static int linuxrc; /* non-zero if we were called as 'linuxrc' */
@@ -508,6 +514,61 @@ static void reopen_console() {
 	dup2(0, 2); // stderr
 
 	print("init/info : reopened /dev/console\n");
+}
+
+/* returns the FD type for /dev by scanning /proc/mounts whose format is :
+ *   [dev] [mnt] [type] [opts*] 0 0
+ */
+static char *get_dev_type()
+{
+	/* scan /proc/mounts for the best match for /dev */
+	int fd;
+	int len;
+	int best;
+	char *ptr, *end, *mnt, *match;
+
+	if ((fd = open(proc_mounts, O_RDONLY)) == -1)
+		return NULL;
+
+	len = read(fd, mounts, sizeof(mounts) - 1);
+	close(fd);
+	if (len <= 0)
+		return NULL;
+
+	end = mounts + len;
+	*end = 0;
+
+	best = 0;
+	for (ptr = mounts; ptr < end; ptr++) {
+		/* skip dev name */
+		while (*ptr && *ptr != ' ')
+			ptr++;
+		/* skip spaces */
+		while (*ptr == ' ')
+			ptr++;
+		mnt = ptr;
+		/* skip mnt name */
+		while (*ptr && *ptr != ' ')
+			ptr++;
+		if (*ptr)
+			*(ptr++) = 0;
+
+		/* look for the longest exact match of "/" or "/dev" */
+		if ((ptr - mnt) > best &&
+		    strcmp(mnt, dev_name) == 0 || strcmp(mnt, root_dir) == 0) {
+			best = ptr - mnt; // counts the trailing zero
+			/* skip FS name and terminate with zero */
+			match = ptr;
+			while (*ptr && *ptr != ' ')
+				ptr++;
+			if (*ptr)
+				*(ptr++) = 0;
+		}
+		/* skip to next line */
+		while (*ptr && *ptr != '\n')
+			ptr++;
+	}
+	return best ? match : NULL;
 }
 
 /* reads the kernel command line </proc/cmdline> into memory and searches
@@ -1579,6 +1640,12 @@ int main(int argc, char **argv, char **envp) {
 		 * The result is OK if identical, otherwise NOK.
 		 */
 		error = (strcmp(cfg_args[1], cfg_args[2]) != 0);
+		goto finish_cmd;
+	    } else if (token == TOK_TD) {
+		/* td (no arg) : tests if /dev is a devtmpfs and returns OK otherwise NOK. */
+		char *res = get_dev_type();
+
+		error = !res || (strcmp(res, devtmpfs_fs) != 0);
 		goto finish_cmd;
 	    }
 
