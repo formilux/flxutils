@@ -256,7 +256,6 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_tmp
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_run[]   = "/var/run";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_self_fd[]   = "/proc/self/fd";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_cmdline[] = "/proc/cmdline";
-//static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init[] = "sbin/init";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init_sysv[] = "sbin/init-sysv";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_linuxrc[] = "/.linuxrc";
 static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_options[] = "size=4k,nr_inodes=4096,mode=755";
@@ -657,13 +656,11 @@ char *my_getenv(char **envp, char *var, const int remove)
 		return NULL;
 
 	while (*envp != NULL) {
-		//printf("comparing <%s> against <%s> for %d chars\n", *envp, var, namelen);
 		if (strncmp(*envp, var, namelen) == 0 &&
 		    ((var[namelen-1] == '=') || envp[0][namelen] == '='))
 			last = envp;
 		envp++;
 	}
-	//printf("found <%s>\n", (last?*last:"null"));
 
 	if (last == NULL) {
 		return NULL;
@@ -674,11 +671,9 @@ char *my_getenv(char **envp, char *var, const int remove)
 
 		if (remove) {
 			while (*last != NULL) {
-				//printf("moving <%s> over <%s>\n", *(last+1),*last);
 				*last = *(last+1);
 				last++;
 			}
-		//printf("returning <%s>\n", ret);
 		}
 		return ret;
 	}
@@ -902,7 +897,6 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp)
 							p += ofs;
 							cfg_line += ofs;
 							*cfg_data = cfg_line;
-							//printf("  OK: -->%s<--, l=%d, ofs=%d\n", dollar_ptr, l, ofs);
 						}
 					}
 
@@ -1042,11 +1036,6 @@ static int hex_range(char *from, uchar *low, uchar *high)
 				c -= 'A' - 10;
 			else
 				return 1;
-
-			//	      if (((uchar)(c -= '0') > 9)  /* not a digit */
-			//		  && (((uchar)(c -= 'A' - '0' - 10) < 0xa) || ((uchar)c > 0xf))
-			//		  && (((uchar)(c -= 'a' - 'A') < 0xa) || ((uchar)c > 0xf)))
-			//		  return 1;
 
 			*low = (*low << 4) + c;
 		}
@@ -1250,7 +1239,6 @@ static void multidev(mode_t mode, uid_t uid, gid_t gid, uchar major, uchar minor
 		memset(&var[i], 0, sizeof(var[i]));
 
 		if (varstr_break(var_str[i], &var[i].type, &var[i].u.chr.set, &var[i].scale)) {
-			//print("empty variable field in string <"); print(var_str[i]); print(">\n");
 			continue;
 		}
 
@@ -1261,7 +1249,6 @@ static void multidev(mode_t mode, uid_t uid, gid_t gid, uchar major, uchar minor
 			break;
 		case 'h':
 			if (hex_range(var[i].u.chr.set, &var[i].u.num.low, &var[i].u.num.high)) {
-				//printf("error in hex range in <%s>\n", var_str[i]);
 				print("init/conf : error in hex range\n");
 				continue;
 			}
@@ -1271,13 +1258,11 @@ static void multidev(mode_t mode, uid_t uid, gid_t gid, uchar major, uchar minor
 		case 'I':
 			if (int_range(var[i].u.chr.set, &var[i].u.num.low, &var[i].u.num.high)) {
 				print("init/conf : error in int range\n");
-				//printf("error in int range in <%s>\n", var_str[i]);
 				continue;
 			}
 			var[i].u.num.value = var[i].u.num.low;
 			break;
-		default:
-			// unknown type
+		default: // unknown type
 			break;
 		}
 	}
@@ -1288,8 +1273,6 @@ static void multidev(mode_t mode, uid_t uid, gid_t gid, uchar major, uchar minor
 		int f;
 
 		name_and_minor(name, &minor_offset, field);
-		// printf("name = %s, minor = %d\n", name, minor + minor_offset);
-
 		mknod_chown(mode, uid, gid, major, minor + minor_offset, name);
 		f = 0;
 
@@ -1379,11 +1362,6 @@ int main(int argc, char **argv, char **envp)
 	   /.linuxrc as a configuration file.
 	*/
 
-#ifdef DEBUG
-	print("argv[0]: ");  print(argv[0]); print("\n");
-	sleep(1);
-#endif
-
 	/* if we are called as "linuxrc" or "/linuxrc", then we work a bit
 	 * differently : /dev is unmounted at the end, and we proceed even if the
 	 * pid is not 1.
@@ -1411,15 +1389,13 @@ int main(int argc, char **argv, char **envp)
 		cfg_file = linuxrc ? (char *)cfg_linuxrc : (char *)cfg_fname;
 
 	if (!linuxrc) {
-		/*FIXME*/
 		/* restore the correct name. Warning: in the case where init is launched
 		 * from userspace, the config file is not read again so only the hardcoded
 		 * name will be used for the executable name.
 		 */
-		//*argv = (char *)&sbin_init_sysv; /*"sbin/init-sysv"*/;
-		conf_init = (char *)&sbin_init_sysv; /*"sbin/init-sysv"*/;
+		conf_init = (char *)&sbin_init_sysv; /* "sbin/init-sysv" */;
 		force_init = my_getenv(envp, CONST_STR("INIT="), 1);
-		//printf("force_init=<%s>, INIT_new=%p\n", my_getenv(envp, "INIT=", 0));
+
 		/* if "rebuild" is passed as the only argument, then we'll try to rebuild a
 		 * full /dev even if not pid==1, but only if it was not already populated
 		 */
@@ -1429,8 +1405,6 @@ int main(int argc, char **argv, char **envp)
 	else {
 		conf_init = NULL;
 		force_init = my_getenv(envp, CONST_STR("init2="), 1);
-		//*argv = (char *)&sbin_init; /* "sbin/init" */
-		//printf("force_init=<%s>, init2_new=%s\n", my_getenv(envp, "init2=", 0));
 	}
 
 	if (pid1 || linuxrc) {
@@ -1448,7 +1422,6 @@ int main(int argc, char **argv, char **envp)
 		 * can safely ignore and overwrite /dev in case of linuxrc, reason why
 		 * we don't test the presence of /dev/console.
 		 */
-#ifndef I_AM_REALLY_DEBUGGING
 		if (linuxrc || !is_dev_populated()) {
 			print("init/info: /dev/console not found, rebuilding /dev.\n");
 			if (mount(dev_name, dev_name, devtmpfs_fs, MS_MGC_VAL, dev_options) == -1 &&
@@ -1476,20 +1449,15 @@ int main(int argc, char **argv, char **envp)
 			}
 		} else if (!pid1) {
 			/* we don't want to rebuild anything else if pid is not 1 */
-#ifdef DEBUG
-			print("init/info: /dev is OK.\n");
-			sleep(10);
-#endif
 			return 0;
 		}
-#endif
+
 		/* if /dev/root is non-existent, we'll try to make it now */
 
 		if (stat(dev_root, &statf) == -1) {
 			print("init/info : /dev/root does not exist. Rebuilding...\n");
 			if (stat(root_dir, &statf) == 0) {
 				if (mknod(dev_root, 0600 | S_IFBLK, statf.st_dev) == -1) {
-					//error = 1;
 					print("init/error : mknod(/dev/root) failed\n");
 				}
 			}
@@ -1634,7 +1602,6 @@ int main(int argc, char **argv, char **envp)
 				continue;
 			}
 
-			//printf("parsing intruction <%s %s...> at level %d (%d)\n", cfg_args[0], cfg_args[1], brace_level, run_level);
 			/* skip conditionnal executions if they cannot change the error status,
 			 * as well as blocks of code excluded from the evaluation
 			 */
@@ -1874,13 +1841,6 @@ int main(int argc, char **argv, char **envp)
 				 * in /proc/cmdline
 				 */
 				mntdev = cfg_args[1];
-				// the following code handles "var=/dev/sda2" or "home=/dev/hda1(3:1)" on
-				// the kernel command line.
-				//if ((*mntdev != '/') && ((cmdline_arg = find_arg(mntdev)) != NULL)) {
-				//    mntdev = cmdline_arg;
-				//    print("<M>ount : using command line device\n");
-				//}
-		
 				maj = mntdev;   /* handles /dev/xxx(maj:min) */
 
 				while (*maj && *maj != '(')
@@ -1983,7 +1943,6 @@ int main(int argc, char **argv, char **envp)
 						setpgid(0, getpid());
 						execve(exec_args[0], exec_args, envp);
 						print("<E>xec(child) : execve() failed\n");
-						//printf("after execve(%s)!\n", exec_args[0]);
 						if (token != TOK_BR)
 							exit(1);
 					}
@@ -1998,7 +1957,6 @@ int main(int argc, char **argv, char **envp)
 						/* tcdrain() does not appear to work, let's wait
 						 * for the terminal to finish writing output data.
 						 */
-						//tcdrain(0);
 						while (1) {
 							if (ioctl(0, TIOCOUTQ, &rem) < 0)
 								break;
@@ -2183,9 +2141,6 @@ int main(int argc, char **argv, char **envp)
 
 	if (rebuild) {
 		print("end of rebuild\n");
-#ifdef SLOW_DEBUG
-		sleep(10);
-#endif
 		/* nothing more to do */
 		return 0;
 	}
@@ -2219,38 +2174,8 @@ int main(int argc, char **argv, char **envp)
 		umount2(dev_name, MNT_DETACH);
 	}
 
-#if 0
-
-	if (cmd_input != INPUT_KBD) {
-		if (linuxrc) {
-			close(2); close(1); close(0);
-			umount2(dev_name, MNT_DETACH);
-			print("exit from linuxrc\n");
-#ifdef SLOW_DEBUG
-			sleep(10);
-#endif
-			/* handle the lilo command line "init2=prog" */
-			//cmdline_arg = find_arg(CONST_STR("init2"));
-			//cmdline_arg = my_getenv(envp, CONST_STR("init2="), 1);
-		} else {
-			/* handle the lilo command line "INIT=prog" */
-			//cmdline_arg = find_arg(CONST_STR("INIT"));
-			cmdline_arg = my_getenv(envp, CONST_STR("INIT="), 1);
-		}
-	
-		if (cmdline_arg != NULL) {
-			argv[0] = cmdline_arg;
-			argv[1] = NULL;
-		}
-	}
-
-	print("init/debug: *argv = "); print (*argv); print("\n");
-#endif
-
 	umask(old_umask);
-#ifdef SLOW_DEBUG
-	sleep(10);
-#endif
+
 	/* the old linuxrc behaviour doesn't exec on exit. */
 	if (*argv != NULL) {
 		err = execve(*argv, argv, envp);
