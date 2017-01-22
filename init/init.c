@@ -218,8 +218,6 @@
 #define O_LARGEFILE     0
 #endif
 
-#define STR_SECT ".rodata"
-
 #ifdef DEBUG
 static void print(char *c)
 {
@@ -240,29 +238,28 @@ static void print(char *c)
  * long strings alignment with gcc-2.95.3 (gcc 3.2.3 doesn't try to align long
  * strings).
  */
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) msg_ent_console[] = "Entering command line mode : enter one command per line, end with '.'\n";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) root_dir[]  = "/";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cur_dir[]  = ".";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_name[]  = "/dev";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_dir[]   = "/var";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_fname[] = "/.preinit";	   /* configuration file */
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) msg_err_console[] = "Command ignored, input already bound to console !\n";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_console[] = "dev/console";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_null[] = "dev/null";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str_rebuild[] = "rebuild";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_tmp[]   = "/var/tmp";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) var_run[]   = "/var/run";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_self_fd[]   = "/proc/self/fd";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_cmdline[] = "/proc/cmdline";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) sbin_init_sysv[] = "sbin/init-sysv";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) cfg_linuxrc[] = "/.linuxrc";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_options[] = "size=4k,nr_inodes=4096,mode=755";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) str__linuxrc[] = "/linuxrc";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_dir[]  = "/proc";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) proc_mounts[]  = "/proc/mounts";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) devtmpfs_fs[]  = "devtmpfs";
-static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_root[]  = "dev/root";
-
+static const char __attribute__ ((__aligned__(1))) msg_ent_console[] = "Entering command line mode : enter one command per line, end with '.'\n";
+static const char __attribute__ ((__aligned__(1))) root_dir[]        = "/";
+static const char __attribute__ ((__aligned__(1))) cur_dir[]         = ".";
+static const char __attribute__ ((__aligned__(1))) dev_name[]        = "/dev";
+static const char __attribute__ ((__aligned__(1))) var_dir[]         = "/var";
+static const char __attribute__ ((__aligned__(1))) cfg_fname[]       = "/.preinit";	   /* configuration file */
+static const char __attribute__ ((__aligned__(1))) msg_err_console[] = "Command ignored, input already bound to console !\n";
+static const char __attribute__ ((__aligned__(1))) dev_console[]     = "dev/console";
+static const char __attribute__ ((__aligned__(1))) dev_null[]        = "dev/null";
+static const char __attribute__ ((__aligned__(1))) str_rebuild[]     = "rebuild";
+static const char __attribute__ ((__aligned__(1))) var_tmp[]         = "/var/tmp";
+static const char __attribute__ ((__aligned__(1))) var_run[]         = "/var/run";
+static const char __attribute__ ((__aligned__(1))) proc_self_fd[]    = "/proc/self/fd";
+static const char __attribute__ ((__aligned__(1))) proc_cmdline[]    = "/proc/cmdline";
+static const char __attribute__ ((__aligned__(1))) sbin_init_sysv[]  = "sbin/init-sysv";
+static const char __attribute__ ((__aligned__(1))) cfg_linuxrc[]     = "/.linuxrc";
+static const char __attribute__ ((__aligned__(1))) dev_options[]     = "size=4k,nr_inodes=4096,mode=755";
+static const char __attribute__ ((__aligned__(1))) str__linuxrc[]    = "/linuxrc";
+static const char __attribute__ ((__aligned__(1))) proc_dir[]        = "/proc";
+static const char __attribute__ ((__aligned__(1))) proc_mounts[]     = "/proc/mounts";
+static const char __attribute__ ((__aligned__(1))) devtmpfs_fs[]     = "devtmpfs";
+static const char __attribute__ ((__aligned__(1))) dev_root[]        = "dev/root";
 
 #define tmpfs_fs        (devtmpfs_fs + 3)       // static const char tmpfs_fs(] = "tmpfs";
 #define tmp_name        (var_tmp + 4)           // static const char tmp_name[]  = "/tmp";
@@ -354,7 +351,7 @@ enum {
 /* this contains all two-chars command, 1-char commands, followed by a token
  * number.
  */
-static const __attribute__((__section__(STR_SECT))) struct {
+static const struct {
 	char lcmd[2];   /* long form */
 	char scmd;      /* short form */
 	char minargs;   /* min #args */
@@ -399,7 +396,7 @@ static const __attribute__((__section__(STR_SECT))) struct {
 #define GID_TTY         5
 #define GID_KMEM        9
 
-static const __attribute__((__section__(STR_SECT))) struct {
+static const struct {
 	char   name[8];
 	mode_t mode;    /* mode + S_IFCHR, S_IFBLK, S_IFIFO */
 	short  gid;
