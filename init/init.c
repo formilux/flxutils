@@ -245,43 +245,13 @@
 #define INPUT_FILE 0
 #define INPUT_KBD  1
 
-
-/* this ordering is awful but it's the most efficient regarding space wasted in
- * long strings alignment with gcc-2.95.3 (gcc 3.2.3 doesn't try to align long
- * strings).
+/*
+ * various types used later
  */
-static const char __attribute__ ((__aligned__(1))) msg_ent_console[] = "Entering command line mode : enter one command per line, end with '.'\n";
-static const char __attribute__ ((__aligned__(1))) root_dir[]        = "/";
-static const char __attribute__ ((__aligned__(1))) cur_dir[]         = ".";
-static const char __attribute__ ((__aligned__(1))) dev_name[]        = "/dev";
-static const char __attribute__ ((__aligned__(1))) var_dir[]         = "/var";
-static const char __attribute__ ((__aligned__(1))) cfg_fname[]       = "/.preinit";	   /* configuration file */
-static const char __attribute__ ((__aligned__(1))) msg_err_console[] = "Command ignored, input already bound to console !\n";
-static const char __attribute__ ((__aligned__(1))) dev_console[]     = "dev/console";
-static const char __attribute__ ((__aligned__(1))) dev_null[]        = "dev/null";
-static const char __attribute__ ((__aligned__(1))) str_rebuild[]     = "rebuild";
-static const char __attribute__ ((__aligned__(1))) var_tmp[]         = "/var/tmp";
-static const char __attribute__ ((__aligned__(1))) var_run[]         = "/var/run";
-static const char __attribute__ ((__aligned__(1))) proc_self_fd[]    = "/proc/self/fd";
-static const char __attribute__ ((__aligned__(1))) proc_cmdline[]    = "/proc/cmdline";
-static const char __attribute__ ((__aligned__(1))) sbin_init_sysv[]  = "sbin/init-sysv";
-static const char __attribute__ ((__aligned__(1))) cfg_linuxrc[]     = "/.linuxrc";
-static const char __attribute__ ((__aligned__(1))) dev_options[]     = "size=4k,nr_inodes=4096,mode=755";
-static const char __attribute__ ((__aligned__(1))) str__linuxrc[]    = "/linuxrc";
-static const char __attribute__ ((__aligned__(1))) proc_dir[]        = "/proc";
-static const char __attribute__ ((__aligned__(1))) proc_mounts[]     = "/proc/mounts";
-static const char __attribute__ ((__aligned__(1))) devtmpfs_fs[]     = "devtmpfs";
-static const char __attribute__ ((__aligned__(1))) dev_root[]        = "dev/root";
 
-#define tmpfs_fs        (devtmpfs_fs + 3)       // static const char tmpfs_fs(] = "tmpfs";
-#define tmp_name        (var_tmp + 4)           // static const char tmp_name[]  = "/tmp";
-#define proc_fs         (proc_dir+1)            // static const char proc_fs[]  = "proc";
-#define fd_dir          (proc_self_fd + 11)     // static const char fd_dir[]  = "fd";
-#define str_linuxrc     (str__linuxrc+1)        // "linuxrc"
-
-
+/* descriptor for a range of device minors */
 struct dev_varstr {
-	char type;
+	char type; /* 'c', 'h', 'i', 'I', or 0 */
 	union {
 		struct {
 			char *set;
@@ -298,6 +268,31 @@ struct dev_varstr {
 	uint8_t scale;
 };
 
+/* configuration language tokens */
+struct token {
+	char lcmd[2];   /* long form */
+	char scmd;      /* short form */
+	char minargs;   /* min #args */
+} __attribute__((__aligned__(1)));
+
+/* device node descriptor */
+struct dev_node {
+	char   name[8];
+	mode_t mode;    /* mode + S_IFCHR, S_IFBLK, S_IFIFO */
+	short  gid;
+	char   major, minor;
+} __attribute__((__aligned__(1)));
+
+/* possible states for variable parsing */
+enum {
+	VAR_NONE = 0,
+	VAR_DOLLAR,
+	VAR_OBRACE,
+	VAR_DEFAULT,
+	VAR_CBRACE,
+};
+
+/* all supported configuration language tokens */
 enum {
 	TOK_LN = 0,            /* ln : make a symlink */
 	TOK_MD,                /* md : mkdir */
@@ -342,23 +337,14 @@ enum {
 	TOK_COND     = 0x700,  /* any condition */
 };
 
-/* possible states for variable parsing */
-enum {
-	VAR_NONE = 0,
-	VAR_DOLLAR,
-	VAR_OBRACE,
-	VAR_DEFAULT,
-	VAR_CBRACE,
-};
+/*
+ * constant map arrays used later.
+ */
 
 /* this contains all two-chars command, 1-char commands, followed by a token
  * number.
  */
-static const struct {
-	char lcmd[2];   /* long form */
-	char scmd;      /* short form */
-	char minargs;   /* min #args */
-} __attribute__((__aligned__(1))) tokens[] = {
+static const struct token tokens[] = {
 	"ln", 'L', 2,   /* TOK_LN */
 	"md", 'D', 1,   /* TOK_MD */
 	"mt", 'M', 3,   /* TOK_MT */
@@ -394,12 +380,8 @@ static const struct {
 	".",  '.', 0,   /* TOK_DOT : put every command before this one */
 };
 
-static const struct {
-	char   name[8];
-	mode_t mode;    /* mode + S_IFCHR, S_IFBLK, S_IFIFO */
-	short  gid;
-	char   major, minor;
-} __attribute__((__aligned__(1))) dev_nodes[] =  {
+/* mandatory device nodes : name, mode, gid, major, minor */
+static const struct dev_node dev_nodes[] =  {
 	/* console must always be at the first location */
 	{ "console", 0600 | S_IFCHR, GID_TTY,  5, 1 },
 	{ "mem",     0640 | S_IFCHR, GID_KMEM, 1, 1 },
@@ -415,6 +397,47 @@ static const struct {
 	{ "ptmx",    0666 | S_IFCHR, GID_TTY,  5, 2 },
 	{ "initctl", 0600 | S_IFIFO, GID_ROOT, 0, 0 },
 };
+
+/* commonly used strings are all stored here together where the compilers
+ * can try to reuse them optimally. It might not be needed anymore with
+ * modern compilers.
+ * this ordering is awful but it's the most efficient regarding space wasted in
+ * long strings alignment with gcc-2.95.3 (gcc 3.2.3 doesn't try to align long
+ * strings).
+ */
+static const char __attribute__ ((__aligned__(1))) msg_ent_console[] = "Entering command line mode : enter one command per line, end with '.'\n";
+static const char __attribute__ ((__aligned__(1))) root_dir[]        = "/";
+static const char __attribute__ ((__aligned__(1))) cur_dir[]         = ".";
+static const char __attribute__ ((__aligned__(1))) dev_name[]        = "/dev";
+static const char __attribute__ ((__aligned__(1))) var_dir[]         = "/var";
+static const char __attribute__ ((__aligned__(1))) cfg_fname[]       = "/.preinit";	   /* configuration file */
+static const char __attribute__ ((__aligned__(1))) msg_err_console[] = "Command ignored, input already bound to console !\n";
+static const char __attribute__ ((__aligned__(1))) dev_console[]     = "dev/console";
+static const char __attribute__ ((__aligned__(1))) dev_null[]        = "dev/null";
+static const char __attribute__ ((__aligned__(1))) str_rebuild[]     = "rebuild";
+static const char __attribute__ ((__aligned__(1))) var_tmp[]         = "/var/tmp";
+static const char __attribute__ ((__aligned__(1))) var_run[]         = "/var/run";
+static const char __attribute__ ((__aligned__(1))) proc_self_fd[]    = "/proc/self/fd";
+static const char __attribute__ ((__aligned__(1))) proc_cmdline[]    = "/proc/cmdline";
+static const char __attribute__ ((__aligned__(1))) sbin_init_sysv[]  = "sbin/init-sysv";
+static const char __attribute__ ((__aligned__(1))) cfg_linuxrc[]     = "/.linuxrc";
+static const char __attribute__ ((__aligned__(1))) dev_options[]     = "size=4k,nr_inodes=4096,mode=755";
+static const char __attribute__ ((__aligned__(1))) str__linuxrc[]    = "/linuxrc";
+static const char __attribute__ ((__aligned__(1))) proc_dir[]        = "/proc";
+static const char __attribute__ ((__aligned__(1))) proc_mounts[]     = "/proc/mounts";
+static const char __attribute__ ((__aligned__(1))) devtmpfs_fs[]     = "devtmpfs";
+static const char __attribute__ ((__aligned__(1))) dev_root[]        = "dev/root";
+
+#define tmpfs_fs        (devtmpfs_fs + 3)       // static const char tmpfs_fs(] = "tmpfs";
+#define tmp_name        (var_tmp + 4)           // static const char tmp_name[]  = "/tmp";
+#define proc_fs         (proc_dir+1)            // static const char proc_fs[]  = "proc";
+#define fd_dir          (proc_self_fd + 11)     // static const char fd_dir[]  = "fd";
+#define str_linuxrc     (str__linuxrc+1)        // "linuxrc"
+
+
+/*
+ * Global variables now.
+ */
 
 static char cfg_data[MAX_CFG_SIZE];
 static char *cfg_args[MAX_CFG_ARGS];
