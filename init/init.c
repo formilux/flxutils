@@ -232,8 +232,6 @@ static void print(char *c)
 #define print(a,...)    do { } while (0)
 #endif
 
-#define ATOL(x)         my_atoul(x)
-
 /* this ordering is awful but it's the most efficient regarding space wasted in
  * long strings alignment with gcc-2.95.3 (gcc 3.2.3 doesn't try to align long
  * strings).
@@ -979,7 +977,7 @@ static inline int varstr_break(char *str, char *type, char **set, uint8_t *scale
 
 	*type = *res[0];
 	*set = res[1];
-	*scale = ATOL(res[2]);
+	*scale = my_atoul(res[2]);
 	return 0;
 }
 
@@ -1682,7 +1680,7 @@ int main(int argc, char **argv, char **envp)
 				}
 
 				if (token == TOK_WK) {
-					error = !keypressed(ATOL(cfg_args[2]));
+					error = !keypressed(my_atoul(cfg_args[2]));
 					goto finish_cmd;
 				}
 
@@ -1796,8 +1794,8 @@ int main(int argc, char **argv, char **envp)
 				}
 
 				multidev(a2mode(cfg_args[1]) | ((token == TOK_BL) ? S_IFBLK : S_IFCHR),
-					 (uid_t)ATOL(cfg_args[2]), (gid_t)ATOL(cfg_args[3]),
-					 ATOL(cfg_args[4]), ATOL(cfg_args[5]), cfg_args[6]);
+					 (uid_t)my_atoul(cfg_args[2]), (gid_t)my_atoul(cfg_args[3]),
+					 my_atoul(cfg_args[4]), my_atoul(cfg_args[5]), cfg_args[6]);
 				chdir(root_dir);
 				goto finish_cmd;
 			case TOK_FI:
@@ -1809,7 +1807,7 @@ int main(int argc, char **argv, char **envp)
 				}
 
 				error = mknod_chown(a2mode(cfg_args[1]) | S_IFIFO,
-						    (uid_t)ATOL(cfg_args[2]), (gid_t)ATOL(cfg_args[3]),
+						    (uid_t)my_atoul(cfg_args[2]), (gid_t)my_atoul(cfg_args[3]),
 						    0, 0, cfg_args[4]);
 				chdir(root_dir);
 				goto finish_cmd;
@@ -1859,9 +1857,9 @@ int main(int argc, char **argv, char **envp)
 					if (*end)
 						*end = 0;
 					if (*maj)
-						imaj = ATOL(maj);
+						imaj = my_atoul(maj);
 					if (*min)
-						imin = ATOL(min);
+						imin = my_atoul(min);
 
 					dev = makedev(imaj, imin);
 					if (mknod(mntdev, S_IFBLK|0600, dev) == -1) { /* makes the node as required */
