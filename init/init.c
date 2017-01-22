@@ -1426,7 +1426,7 @@ int main(int argc, char **argv, char **envp)
 
 				print("init/info: /dev has been mounted.\n");
 				for (i = 0; i < sizeof(dev_nodes) / sizeof(dev_nodes[0]); i++) {
-					mknod_chown(dev_nodes[i].mode, (uid_t)UID_ROOT, (gid_t)dev_nodes[i].gid,
+					mknod_chown(dev_nodes[i].mode, UID_ROOT, dev_nodes[i].gid,
 						    dev_nodes[i].major, dev_nodes[i].minor, (char *)dev_nodes[i].name);
 				}
 				symlink(proc_self_fd, fd_dir);
@@ -1794,7 +1794,7 @@ int main(int argc, char **argv, char **envp)
 				}
 
 				multidev(a2mode(cfg_args[1]) | ((token == TOK_BL) ? S_IFBLK : S_IFCHR),
-					 (uid_t)my_atoul(cfg_args[2]), (gid_t)my_atoul(cfg_args[3]),
+					 my_atoul(cfg_args[2]), my_atoul(cfg_args[3]),
 					 my_atoul(cfg_args[4]), my_atoul(cfg_args[5]), cfg_args[6]);
 				chdir(root_dir);
 				goto finish_cmd;
@@ -1807,7 +1807,7 @@ int main(int argc, char **argv, char **envp)
 				}
 
 				error = mknod_chown(a2mode(cfg_args[1]) | S_IFIFO,
-						    (uid_t)my_atoul(cfg_args[2]), (gid_t)my_atoul(cfg_args[3]),
+						    my_atoul(cfg_args[2]), my_atoul(cfg_args[3]),
 						    0, 0, cfg_args[4]);
 				chdir(root_dir);
 				goto finish_cmd;
