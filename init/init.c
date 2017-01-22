@@ -329,6 +329,7 @@ enum {
 	TOK_ST,                /* st : stat file existence */
 	TOK_WK,                /* wk : wait key */
 	TOK_TD,                /* td : test /dev for devtmpfs support */
+	TOK_TA,                /* ta : tar "t"/"x"/"xv" archive $2 to dir #3 */
 	/* better add new commands above */
 	TOK_OB,	               /* {  : begin a command block */
 	TOK_CB,	               /* }  : end a command block */
@@ -380,6 +381,7 @@ static const struct token tokens[] = {
 	"st",   0, 1,   /* TOK_ST */
 	"wk",   0, 2,   /* TOK_WK */
 	"td",   0, 0,   /* TOK_TD */
+	"ta",   0, 3,   /* TOK_TA */
 	"{",  '{', 0,   /* TOK_OB */
 	"}",  '}', 0,   /* TOK_CB */
 	".",  '.', 0,   /* TOK_DOT : put every command before this one */
@@ -857,6 +859,203 @@ static int is_dev_populated()
 		return 0;
 
 	return 1;
+}
+
+/* tries to display or extract a tar archive from file <file> to directory
+ * <dir>. The <action> may be "x"/"xv" for extract or "t" to display (test).
+ * Returns 0 on success or -1 with errno possibly set. This function only
+ * supports a subset of the posix and the GNU/old GNU tar formats. Sparse
+ * files are not supported, uname/gname/mtime are ignored, large files are
+ * not supported, write errors are ignored. The tar format is quite simple
+ * for extraction and is described here :
+ *
+ *    https://www.gnu.org/software/tar/manual/html_node/Standard.html
+ */
+static int tar_extract(const char *action, const char *file, const char *dir)
+{
+	union {
+		char buffer[512];             /* raw data */
+		struct {                      /* byte offset */
+			char name[100];       /*   0 */
+			char mode[8];         /* 100 */
+			char uid[8];          /* 108 */
+			char gid[8];          /* 116 */
+			char size[12];        /* 124 */
+			char mtime[12];       /* 136 */
+			char chksum[8];       /* 148 */
+			char typeflag;        /* 156 */
+			char linkname[100];   /* 157 */
+			char magic_ver[8];    /* 257 : "ustar  \0" or "ustar\0""00" */
+			char uname[32];       /* 265 */
+			char gname[32];       /* 297 */
+			char devmajor[8];     /* 329 */
+			char devminor[8];     /* 337 */
+			char prefix[155];     /* 345 */
+			/* 500 */
+		} hdr;
+	} blk;
+
+	char name[256];
+	char dest[256];
+	int ret, len, pos;
+	int mode, major, minor;
+	int uid, gid;
+	int fd, outfd;
+	unsigned long size;
+
+	if (!dir)
+		dir = ".";
+
+	if (!action)
+		action = "";
+
+	ret = fd = open(file, O_RDONLY);
+	if (ret < 0)
+		goto out_ret;
+
+	ret = 0;
+	outfd = -1;
+	while (1) {
+		/* note: we always come here with ret == 0, except if we
+		 * just met empty blocks in which case ret == the number of
+		 * consecutive empty blocks seen.
+		 */
+		len = read(fd, blk.buffer, sizeof(blk.buffer));
+		if (len < sizeof(blk.buffer))
+			goto out_fail;
+
+		/* accept any form of ustar */
+		if (!streqlen(blk.hdr.magic_ver, "ustar", 5)) {
+			/* the end of the archive is marked by two consecurive
+			 * empty records, otherwise it's a real error.
+			 */
+			while (len) {
+				if (blk.buffer[--len])
+					goto out_fail;
+			}
+			if (++ret < 2)
+				continue;
+
+			/* we've reached the end */
+			break;
+		}
+
+		/* concatenate hdr.prefix and hdr.name into <name> */
+		len = 0;
+		len += my_strlcpy(dest + len, blk.hdr.prefix, 156);     // max 155 copied.
+		len += my_strlcpy(dest + len, blk.hdr.name, 101);       // max 100 copied.
+
+		if (action[0] == 't' || (action[0] == 'x' && action[1] == 'v')) {
+			dest[len] = '\n';
+			write(1, dest, len + 1);
+			dest[len] = 0;
+		}
+
+		/* now concatenate <dir>, "/" and <dest> into <name> */
+		pos = 0;
+		pos += my_strlcpy(name + pos, dir, sizeof(name));
+		pos += my_strlcpy(name + pos, "/", sizeof(name) - pos);
+		pos += my_strlcpy(name + pos, dest, sizeof(name) - pos);
+
+		/* link target for hardlinks/symlinks */
+		len  = my_strlcpy(dest, blk.hdr.prefix, 156);     // max 155 copied.
+		len += my_strlcpy(dest + len, blk.hdr.linkname, 101); // max 100 copied.
+
+		mode = base8_to_ul_lim(blk.hdr.mode, sizeof(blk.hdr.mode));
+		uid  = base8_to_ul_lim(blk.hdr.uid,  sizeof(blk.hdr.uid));
+		gid  = base8_to_ul_lim(blk.hdr.gid,  sizeof(blk.hdr.gid));
+		size = base8_to_ul_lim(blk.hdr.size, sizeof(blk.hdr.size));
+
+		if (*action == 'x') {
+			/* extract */
+			/* For all common types, we need to create the parent directory
+			 * first. These are types 0 and '0'..'6'.
+			 */
+			if (!blk.hdr.typeflag ||
+			    (unsigned char)(blk.hdr.typeflag - '0') <= 6) {
+				while (pos > 0 && name[pos] != '/')
+					pos--;
+				if (pos && name[pos] == '/') {
+					name[pos] = 0;
+					recursive_mkdir(name, 0755);
+					name[pos] = '/';
+				}
+			}
+
+			switch (blk.hdr.typeflag) {
+			case  0  :
+			case '0' : /* normal file */
+				ret = outfd = open(name, O_CREAT|O_WRONLY|O_TRUNC|O_LARGEFILE, mode);
+				chown(name, uid, gid);
+				/* the error is handled below by not copying the data */
+				break;
+			case '1' : /* hard link */
+				ret = link(dest, name);
+				break;
+			case '2' : /* symlink */
+				ret = symlink(dest, name);
+				chown(name, uid, gid);
+				break;
+			case '3' : /* char dev */
+				ret = -mknod_chown(mode | S_IFCHR, uid, gid, major, minor, name);
+				break;
+			case '4' : /* block */
+				ret = -mknod_chown(mode | S_IFBLK, uid, gid, major, minor, name);
+				break;
+			case '5' : /* directory */
+				ret = recursive_mkdir(name, mode);
+				break;
+			case '6' : /* fifo */
+				ret = -mknod_chown(mode | S_IFIFO, uid, gid, major, minor, name);
+				break;
+			default: /* unhandled, silently skip size */
+				break;
+			}
+		}
+
+		/* now copy the file data or simply skip the record.
+		 * outfd < 0 if we only want to silently skip.
+		 */
+		while (size > 0) {
+			char buffer[4096];
+
+			len = size;
+			if (len > sizeof(buffer))
+				len = sizeof(buffer);
+			len = (len + 511) & -512;
+			len = read(fd, buffer, len);
+			if (len <= 0)
+				goto out_fail;
+
+			if ((unsigned long)len > size)
+				len = size;
+			size -= len;
+
+			if (outfd >= 0) {
+				if (write(outfd, buffer, len) < 0) {
+					close(outfd);
+					outfd = -1;
+				}
+			}
+		}
+
+		if (outfd >= 0) {
+			close(outfd);
+			outfd = -1;
+		}
+		ret = 0;
+	}
+
+	ret = 0;
+out_close:
+	if (outfd >= 0)
+		close(outfd);
+	close(fd);
+out_ret:
+	return ret;
+out_fail:
+	ret = -1;
+	goto out_close;
 }
 
 
@@ -2183,6 +2382,9 @@ int main(int argc, char **argv, char **envp)
 				}
 				losetup_close_all:
 				close (lfd); close (ffd);
+				break;
+			case TOK_TA:
+				error = -tar_extract(cfg_args[1], cfg_args[2], cfg_args[3]);
 				break;
 			}
 			default:
