@@ -271,8 +271,6 @@ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) dev_roo
 #define str_linuxrc     (str__linuxrc+1)        // "linuxrc"
 
 
-#define CONST_STR(x)  ({ static const char __attribute__ ((__section__(STR_SECT),__aligned__(1))) ___str___[]=x; (char *)___str___; })
-
 /* used by naming rules */
 #define MAX_FIELDS	8
 #define MAX_DEVNAME_LEN	64
@@ -1392,7 +1390,7 @@ int main(int argc, char **argv, char **envp)
 		 * name will be used for the executable name.
 		 */
 		conf_init = (char *)&sbin_init_sysv; /* "sbin/init-sysv" */;
-		force_init = my_getenv(envp, CONST_STR("INIT="), 1);
+		force_init = my_getenv(envp, "INIT=", 1);
 
 		/* if "rebuild" is passed as the only argument, then we'll try to rebuild a
 		 * full /dev even if not pid==1, but only if it was not already populated
@@ -1402,7 +1400,7 @@ int main(int argc, char **argv, char **envp)
 	}
 	else {
 		conf_init = NULL;
-		force_init = my_getenv(envp, CONST_STR("init2="), 1);
+		force_init = my_getenv(envp, "init2=", 1);
 	}
 
 	if (pid1 || linuxrc) {
@@ -1488,7 +1486,7 @@ int main(int argc, char **argv, char **envp)
 					p += my_strlcpy(p, ret_msg, sizeof(cmd_line));
 
 				ret_msg = NULL;
-				p += my_strlcpy(p, error ? CONST_STR("ER\n>") : CONST_STR("OK\n>"), 5);
+				p += my_strlcpy(p, error ? "ER\n>" : "OK\n>", 5);
 
 				lev1 = run_level;
 				lev2 = brace_level;
@@ -1876,7 +1874,7 @@ int main(int argc, char **argv, char **envp)
 				}
 		
 				mntarg = MS_RDONLY;
-				if (cfg_args[4] != NULL && streq(cfg_args[4], CONST_STR("rw"))) {
+				if (cfg_args[4] != NULL && streq(cfg_args[4], "rw")) {
 					print("<M>ount : 'rw' flag found, mounting read/write\n");
 					mntarg &= ~MS_RDONLY;
 				}
@@ -2024,12 +2022,12 @@ int main(int argc, char **argv, char **envp)
 					print("<P>ivot : error during chdir(new root)\n");
 				}
 
-				if (pivot_root(/*CONST_STR(".")*/cur_dir, cfg_args[2]) == -1) {
+				if (pivot_root(cur_dir, cfg_args[2]) == -1) {
 					error = 1;
 					print("<P>ivot : error during pivot_root()\n");
 				}
 
-				chroot(cur_dir/*CONST_STR(".")*/);
+				chroot(cur_dir);
 				if (chdir(root_dir) == -1) {
 					error = 1;
 					print("<P>ivot : error during chdir(/)\n");
