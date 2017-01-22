@@ -405,24 +405,24 @@ static const __attribute__((__section__(STR_SECT))) struct {
 
 static const __attribute__((__section__(STR_SECT))) struct {
 	char   name[8];
+	mode_t mode;    /* mode + S_IFCHR, S_IFBLK, S_IFIFO */
 	short  gid;
 	char   major, minor;
-	mode_t mode;    /* mode + S_IFCHR, S_IFBLK, S_IFIFO */
 } __attribute__((__aligned__(1))) dev_nodes[] =  {
 	/* console must always be at the first location */
-	{ "console", GID_TTY,  5, 1, 0600 | S_IFCHR },
-	{ "mem",     GID_KMEM, 1, 1, 0640 | S_IFCHR },
-	{ "kmem",    GID_KMEM, 1, 2, 0640 | S_IFCHR },
-	{ "null",    GID_ROOT, 1, 3, 0666 | S_IFCHR },
-	{ "port",    GID_KMEM, 1, 4, 0640 | S_IFCHR },
-	{ "zero",    GID_ROOT, 1, 5, 0666 | S_IFCHR },
-	{ "full",    GID_ROOT, 1, 7, 0666 | S_IFCHR },
-	{ "random",  GID_ROOT, 1, 8, 0644 | S_IFCHR },
-	{ "urandom", GID_ROOT, 1, 9, 0644 | S_IFCHR },
-	{ "tty0",    GID_TTY,  4, 0, 0600 | S_IFCHR },
-	{ "tty",     GID_TTY,  5, 0, 0666 | S_IFCHR },
-	{ "ptmx",    GID_TTY,  5, 2, 0666 | S_IFCHR },
-	{ "initctl", GID_ROOT, 0, 0, 0600 | S_IFIFO },
+	{ "console", 0600 | S_IFCHR, GID_TTY,  5, 1 },
+	{ "mem",     0640 | S_IFCHR, GID_KMEM, 1, 1 },
+	{ "kmem",    0640 | S_IFCHR, GID_KMEM, 1, 2 },
+	{ "null",    0666 | S_IFCHR, GID_ROOT, 1, 3 },
+	{ "port",    0640 | S_IFCHR, GID_KMEM, 1, 4 },
+	{ "zero",    0666 | S_IFCHR, GID_ROOT, 1, 5 },
+	{ "full",    0666 | S_IFCHR, GID_ROOT, 1, 7 },
+	{ "random",  0644 | S_IFCHR, GID_ROOT, 1, 8 },
+	{ "urandom", 0644 | S_IFCHR, GID_ROOT, 1, 9 },
+	{ "tty0",    0600 | S_IFCHR, GID_TTY,  4, 0 },
+	{ "tty",     0666 | S_IFCHR, GID_TTY,  5, 0 },
+	{ "ptmx",    0666 | S_IFCHR, GID_TTY,  5, 2 },
+	{ "initctl", 0600 | S_IFIFO, GID_ROOT, 0, 0 },
 };
 
 static char cfg_data[MAX_CFG_SIZE];
