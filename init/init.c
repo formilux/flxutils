@@ -452,6 +452,11 @@ static int error;       /* an error has emerged from last operation */
 static int linuxrc;     /* non-zero if we were called as 'linuxrc' */
 
 
+/*
+ * Utility functions
+ */
+
+
 /* Used only to emit debugging messages when compiled with -DDEBUG */
 static void print(char *c)
 {
@@ -514,7 +519,7 @@ static void my_strcpy(char *dst, const char *src)
  * This code has been optimized for size and speed : on x86, it's 45 bytes
  * long, uses only registers, and consumes only 4 cycles per char.
  */
-int my_strlcpy(char *dst, const char *src, int size)
+static int my_strlcpy(char *dst, const char *src, int size)
 {
 	char *orig = dst;
 
@@ -527,6 +532,260 @@ int my_strlcpy(char *dst, const char *src, int size)
 	return dst - orig;
 }
 
+/*
+ * looks for the last assignment of variable 'var=' in 'envp'.
+ * the value found is returned (or NULL if not found). Note
+ * that if the variable name does not end with an '=', then it
+ * will be implicitly checked.
+ * if 'remove' is not zero, the assignment is removed afterwards.
+ * eg: init=my_getenv(envp, "init=", 1);
+ */
+static char *my_getenv(char **envp, char *var, const int remove)
+{
+	int namelen;
+	char **last;
+
+	last = NULL;
+	namelen = strlen(var);
+	if (!namelen || !envp)
+		return NULL;
+
+	while (*envp != NULL) {
+		if (strncmp(*envp, var, namelen) == 0 &&
+		    ((var[namelen-1] == '=') || envp[0][namelen] == '='))
+			last = envp;
+		envp++;
+	}
+
+	if (last == NULL) {
+		return NULL;
+	} else {
+		char *ret = (*last) + namelen;
+		if (var[namelen-1] != '=')
+			ret++;
+
+		if (remove) {
+			while (*last != NULL) {
+				*last = *(last+1);
+				last++;
+			}
+		}
+		return ret;
+	}
+}
+
+/* appends a constant string <cst> to the end <dest> of a string and returns
+ * the pointer to the new end. No size checks are performed.
+ */
+static char *addcst(char *dest, const char *cst)
+{
+	while ((*dest++ = *cst++) != '\0');
+	return dest - 1;
+}
+
+/* appends a character <chr> to the end <dest> of a string and returns the
+ * pointer to the new end. No size checks are performed.
+ */
+static char *addchr(char *dest, char chr)
+{
+	*dest++ = chr;
+	*dest = '\0';
+	return dest;
+}
+
+/* appends an 8-bit unsigned integer <num> to the end <dest> of a string and
+ * returns the pointer to the new end. No size checks are performed.
+ */
+static char *addint(char *dest, uint8_t num)
+{
+	int div;
+	char *out = dest;
+
+	for (div = (1 << 16) + (10 << 8) + 100; div > 0;) {
+		int q, r, d;
+		d = (unsigned char)div;
+		q = num / d; r = num % d;
+		div >>= 8;
+
+		if (!div || (out != dest) || q) {
+			*out++ = q + '0';
+		}
+		num = r;
+	}
+	*out = '\0';
+	return out;
+}
+
+/* appends an 8-bit unsigned hex integer <num> to the end <dest> of a string
+ * and returns the pointer to the new end. No size checks are performed.
+ */
+static char *addhex(char *dest, uint8_t num)
+{
+	uint8_t c;
+
+	if (num > 0x0F) {
+		c = num >> 4;
+		*dest++ = (c > 9) ? (c - 10 + 'a') : (c + '0');
+	}
+	c = num & 0x0F;
+	*dest++ = (c > 9) ? (c - 10 + 'a') : (c + '0');
+	*dest = '\0';
+	return dest;
+}
+
+/* breaks a 3-fields, comma-separated string into 3 fields */
+static int varstr_break(char *str, char *type, char **set, uint8_t *scale)
+{
+	int state;
+	char *res[3];
+
+	for (state = 0; state < 3; state++) {
+		res[state] = str;
+
+		while (*str && *str != ',')
+			str++;
+
+		if (*str)
+			*str++ = 0;
+		else if (state < 2)
+			return 1;
+	}
+
+	*type = *res[0];
+	*set = res[1];
+	*scale = my_atoul(res[2]);
+	return 0;
+}
+
+/* reads a range from a string of the form "low-high" or "value".
+ * Returns 0 if OK, or 1 if error.
+ */
+static int int_range(char *from, uint8_t *low, uint8_t *high)
+{
+	char c;
+
+	*low = 0;
+	while ((c = *from) != '\0') {
+		if (isdigit(c))
+			*low = *low * 10 + c - '0';
+		else if (c == '-') {
+			low = high;
+			*low = 0;
+		}
+		else
+			return 1;
+		from++;
+	}
+	if (low != high)  /* high has not been written to */
+		*high = *low;
+
+	return 0;
+}
+
+/* reads a range from a hex string of the form "low-high" or "value".
+ * Returns 0 if OK, or 1 if error.
+ */
+static int hex_range(char *from, uint8_t *low, uint8_t *high)
+{
+	uint8_t c;
+	*low = 0;
+	while ((c = *from) != '\0') {
+		if (c == '-') {
+			low = high; /* all writes will now be done on <high> */
+			*low = 0;
+		}
+		else {
+			if (c >= '0' && c <= '9')
+				c -= '0';
+			else if (c >= 'a' && c <= 'f')
+				c -= 'a' - 10;
+			else if (c >= 'A' && c <= 'F')
+				c -= 'A' - 10;
+			else
+				return 1;
+
+			*low = (*low << 4) + c;
+		}
+		from++;
+	}
+	if (low != high) /* high has not been written to */
+		*high = *low;
+
+	return 0;
+}
+
+/* converts an octal permission mode into the mode_t equivalent */
+static mode_t a2mode(char *ascii)
+{
+	mode_t m = 0;
+
+	while ((unsigned)(*ascii - '0') < 8) {
+		m = (m << 3) | (*ascii - '0');
+		ascii++;
+	}
+	return m;
+}
+
+/* flushes stdin and waits for it to be done */
+static void flush_stdin()
+{
+	int ret;
+	fd_set in;
+	struct timeval tv;
+
+	while (1) {
+		FD_ZERO(&in);
+		FD_SET(0, &in);
+		tv.tv_sec = tv.tv_usec = 0;
+		ret = select(1, &in, NULL, NULL, &tv);
+
+		if (ret <= 0)
+			break;
+
+		read(0, &ret, sizeof(ret));
+	}
+}
+
+/* waits <delay> seconds for a character to be entered from stdin. It returns
+ * zero if the timeout expires, otherwise it flushes stdin and returns 1
+ */
+static int keypressed(int delay)
+{
+	int ret;
+	fd_set in;
+	struct timeval tv;
+
+	FD_ZERO(&in);
+	FD_SET(0, &in);
+	tv.tv_sec = delay; tv.tv_usec=0;
+	ret = select(1, &in, NULL, NULL, &tv);
+
+	if (ret <= 0)
+		return 0;
+
+	flush_stdin();
+	return 1;
+}
+
+/* makes a dev entry. continues on error, but reports them. */
+static int mknod_chown(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t minor, char *name)
+{
+	int error;
+
+	if (mknod(name, mode, makedev(major, minor)) == -1 && chmod(name, mode) == -1) {
+		error = 1;
+		print("init/error : mknod("); print(name); print(") failed\n");
+	}
+
+	if (chown(name, uid, gid) == -1) {
+		error = 1;
+		print("init/error : chown("); print(name); print(") failed\n");
+	}
+
+	return error;
+}
+
+/* closes 0,1,2 and opens /dev/console on them instead */
 static void reopen_console()
 {
 	int i, fd, oldfd;
@@ -546,6 +805,28 @@ static void reopen_console()
 
 	print("init/info : reopened /dev/console\n");
 }
+
+/* return 0 if at least one entry is missing */
+static int is_dev_populated()
+{
+	struct stat statf;
+	int i;
+
+	if (stat(dev_console, &statf) == -1)
+		return 0;
+
+	if (stat(dev_null, &statf) == -1)
+		return 0;
+
+	return 1;
+}
+
+
+/*
+ * Functions below are totally specific to the program and its configuration
+ * language.
+ */
+
 
 /* returns the FD type for /dev by scanning /proc/mounts whose format is :
  *   [dev] [mnt] [type] [opts*] 0 0
@@ -661,52 +942,10 @@ char *find_arg(char *arg)
 	return NULL; /* not found */
 }
 
-/*
- * looks for the last assignment of variable 'var=' in 'envp'.
- * the value found is returned (or NULL if not found). Note
- * that if the variable name does not end with an '=', then it
- * will be implicitly checked.
- * if 'remove' is not zero, the assignment is removed afterwards.
- * eg: init=my_getenv(envp, "init=", 1);
- */
-char *my_getenv(char **envp, char *var, const int remove)
-{
-	int namelen;
-	char **last;
-
-	last = NULL;
-	namelen = strlen(var);
-	if (!namelen || !envp)
-		return NULL;
-
-	while (*envp != NULL) {
-		if (strncmp(*envp, var, namelen) == 0 &&
-		    ((var[namelen-1] == '=') || envp[0][namelen] == '='))
-			last = envp;
-		envp++;
-	}
-
-	if (last == NULL) {
-		return NULL;
-	} else {
-		char *ret = (*last) + namelen;
-		if (var[namelen-1] != '=')
-			ret++;
-
-		if (remove) {
-			while (*last != NULL) {
-				*last = *(last+1);
-				last++;
-			}
-		}
-		return ret;
-	}
-}
-
 /* reads the configuration file <cfg_file> into memory.
  * returns 0 if OK, -1 if error.
  */
-static inline int read_cfg(char *cfg_file)
+static int read_cfg(char *cfg_file)
 {
 	int cfg_fd;
 	int cfg_size;
@@ -957,167 +1196,6 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp)
 	return TOK_EOF;
 }
 
-/* makes a dev entry. continues on error, but reports them. */
-static inline int mknod_chown(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t minor, char *name)
-{
-	int error;
-
-	if (mknod(name, mode, makedev(major, minor)) == -1 && chmod(name, mode) == -1) {
-		error = 1;
-		print("init/error : mknod("); print(name); print(") failed\n");
-	}
-
-	if (chown(name, uid, gid) == -1) {
-		error = 1;
-		print("init/error : chown("); print(name); print(") failed\n");
-	}
-
-	return error;
-}
-
-/* return 0 if at least one entry is missing */
-static int is_dev_populated()
-{
-	struct stat statf;
-	int i;
-
-	if (stat(dev_console, &statf) == -1)
-		return 0;
-
-	if (stat(dev_null, &statf) == -1)
-		return 0;
-
-	return 1;
-}
-
-/* breaks a 3-fields, comma-separated string into 3 fields */
-static inline int varstr_break(char *str, char *type, char **set, uint8_t *scale)
-{
-	int state;
-	char *res[3];
-
-	for (state = 0; state < 3; state++) {
-		res[state] = str;
-
-		while (*str && *str != ',')
-			str++;
-
-		if (*str)
-			*str++ = 0;
-		else if (state < 2)
-			return 1;
-	}
-
-	*type = *res[0];
-	*set = res[1];
-	*scale = my_atoul(res[2]);
-	return 0;
-}
-
-/* reads a range from a string of the form "low-high" or "value".
- * Returns 0 if OK, or 1 if error.
- */
-static int int_range(char *from, uint8_t *low, uint8_t *high)
-{
-	char c;
-
-	*low = 0;
-	while ((c = *from) != '\0') {
-		if (isdigit(c))
-			*low = *low * 10 + c - '0';
-		else if (c == '-') {
-			low = high;
-			*low = 0;
-		}
-		else
-			return 1;
-		from++;
-	}
-	if (low != high)  /* high has not been written to */
-		*high = *low;
-
-	return 0;
-}
-
-/* reads a range from a hex string of the form "low-high" or "value".
- * Returns 0 if OK, or 1 if error.
- */
-static int hex_range(char *from, uint8_t *low, uint8_t *high)
-{
-	uint8_t c;
-	*low = 0;
-	while ((c = *from) != '\0') {
-		if (c == '-') {
-			low = high; /* all writes will now be done on <high> */
-			*low = 0;
-		}
-		else {
-			if (c >= '0' && c <= '9')
-				c -= '0';
-			else if (c >= 'a' && c <= 'f')
-				c -= 'a' - 10;
-			else if (c >= 'A' && c <= 'F')
-				c -= 'A' - 10;
-			else
-				return 1;
-
-			*low = (*low << 4) + c;
-		}
-		from++;
-	}
-	if (low != high) /* high has not been written to */
-		*high = *low;
-
-	return 0;
-}
-
-static inline char *addcst(char *dest, char *cst)
-{
-	while ((*dest++ = *cst++) != '\0');
-	return dest - 1;
-}
-
-static inline char *addchr(char *dest, char chr)
-{
-	*dest++ = chr;
-	*dest = '\0';
-	return dest;
-}
-
-static char *addint(char *dest, uint8_t num)
-{
-	int div;
-	char *out = dest;
-
-	for (div = (1 << 16) + (10 << 8) + 100; div > 0;) {
-		int q, r, d;
-		d = (unsigned char)div;
-		q = num / d; r = num % d;
-		div >>= 8;
-
-		if (!div || (out != dest) || q) {
-			*out++ = q + '0';
-		}
-		num = r;
-	}
-	*out = '\0';
-	return out;
-}
-
-static char *addhex(char *dest, uint8_t num)
-{
-	uint8_t c;
-
-	if (num > 0x0F) {
-		c = num >> 4;
-		*dest++ = (c > 9) ? (c - 10 + 'a') : (c + '0');
-	}
-	c = num & 0x0F;
-	*dest++ = (c > 9) ? (c - 10 + 'a') : (c + '0');
-	*dest = '\0';
-	return dest;
-}
-
 /* builds a device name from the current <var> and <cst_str> arrays,
  * and compute the corresponding minor number by adding all the relevant
  * fields' values
@@ -1306,58 +1384,6 @@ static void multidev(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t m
 		if (f >= field)
 			break;
 	}
-}
-
-/* converts an octal permission mode into the mode_t equivalent */
-static mode_t a2mode(char *ascii)
-{
-	mode_t m = 0;
-
-	while ((unsigned)(*ascii - '0') < 8) {
-		m = (m << 3) | (*ascii - '0');
-		ascii++;
-	}
-	return m;
-}
-
-void flush_stdin()
-{
-	int ret;
-	fd_set in;
-	struct timeval tv;
-
-	while (1) {
-		FD_ZERO(&in);
-		FD_SET(0, &in);
-		tv.tv_sec = tv.tv_usec = 0;
-		ret = select(1, &in, NULL, NULL, &tv);
-
-		if (ret <= 0)
-			break;
-
-		read(0, &ret, sizeof(ret));
-	}
-}
-
-/* waits <delay> seconds for a character to be entered from stdin. It returns
- * zero if the timeout expires, otherwise it flushes stdin and returns 1
- */    
-int keypressed(int delay)
-{
-	int ret;
-	fd_set in;
-	struct timeval tv;
-
-	FD_ZERO(&in);
-	FD_SET(0, &in);
-	tv.tv_sec = delay; tv.tv_usec=0;
-	ret = select(1, &in, NULL, NULL, &tv);
-
-	if (ret <= 0)
-		return 0;
-
-	flush_stdin();
-	return 1;
 }
 
 int main(int argc, char **argv, char **envp)
