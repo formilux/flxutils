@@ -829,7 +829,7 @@ static char *get_dev_type()
 
 		/* look for the longest exact match of "/" or "/dev" */
 		if ((ptr - mnt) > best &&
-		    strcmp(mnt, "/dev") == 0 || strcmp(mnt, "/") == 0) {
+		    (strcmp(mnt, "/dev") == 0 || strcmp(mnt, "/") == 0)) {
 			best = ptr - mnt; // counts the trailing zero
 			/* skip FS name and terminate with zero */
 			match = ptr;
