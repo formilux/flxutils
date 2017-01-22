@@ -206,6 +206,10 @@
 #include <sys/stat.h>
 #include <linux/loop.h>
 
+/*
+ * compatibility defines in case they are missing
+ */
+
 #ifndef MNT_DETACH
 #define MNT_DETACH      2
 #endif
@@ -217,6 +221,29 @@
 #ifndef O_LARGEFILE
 #define O_LARGEFILE     0
 #endif
+
+/*
+ * configuration settings and convenience defines
+ */
+
+/* used by naming rules */
+#define MAX_FIELDS	8
+#define MAX_DEVNAME_LEN	64
+#define MAX_CFG_SIZE	16384
+#define	MAX_CFG_ARGS	64
+#define MAX_CMDLINE_LEN 512
+#define MAX_BRACE_LEVEL	10
+#define MAX_MNT_SIZE	1024
+
+/* well-known UID/GID */
+#define UID_ROOT        0
+#define GID_ROOT        0
+#define GID_TTY         5
+#define GID_KMEM        9
+
+/* the two input modes */
+#define INPUT_FILE 0
+#define INPUT_KBD  1
 
 
 /* this ordering is awful but it's the most efficient regarding space wasted in
@@ -252,15 +279,6 @@ static const char __attribute__ ((__aligned__(1))) dev_root[]        = "dev/root
 #define fd_dir          (proc_self_fd + 11)     // static const char fd_dir[]  = "fd";
 #define str_linuxrc     (str__linuxrc+1)        // "linuxrc"
 
-
-/* used by naming rules */
-#define MAX_FIELDS	8
-#define MAX_DEVNAME_LEN	64
-#define MAX_CFG_SIZE	16384
-#define	MAX_CFG_ARGS	64
-#define MAX_CMDLINE_LEN 512
-#define MAX_BRACE_LEVEL	10
-#define MAX_MNT_SIZE	1024
 
 struct dev_varstr {
 	char type;
@@ -376,11 +394,6 @@ static const struct {
 	".",  '.', 0,   /* TOK_DOT : put every command before this one */
 };
 
-#define UID_ROOT        0
-#define GID_ROOT        0
-#define GID_TTY         5
-#define GID_KMEM        9
-
 static const struct {
 	char   name[8];
 	mode_t mode;    /* mode + S_IFCHR, S_IFBLK, S_IFIFO */
@@ -414,10 +427,6 @@ static char mounts[MAX_MNT_SIZE];
 static struct dev_varstr var[MAX_FIELDS];
 static int error;       /* an error has emerged from last operation */
 static int linuxrc;     /* non-zero if we were called as 'linuxrc' */
-
-/* the two input modes */
-#define INPUT_FILE 0
-#define INPUT_KBD  1
 
 
 /* Used only to emit debugging messages when compiled with -DDEBUG */
