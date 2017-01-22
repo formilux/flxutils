@@ -358,11 +358,11 @@ enum {
 /* this contains all two-chars command, 1-char commands, followed by a token
  * number.
  */
-static const __attribute__((__section__(STR_SECT),__aligned__(1))) struct {
+static const __attribute__((__section__(STR_SECT))) struct {
 	char lcmd[2];   /* long form */
 	char scmd;      /* short form */
 	char minargs;   /* min #args */
-} tokens[] = {
+} __attribute__((__aligned__(1))) tokens[] = {
 	"ln", 'L', 2,   /* TOK_LN */
 	"md", 'D', 1,   /* TOK_MD */
 	"mt", 'M', 3,   /* TOK_MT */
@@ -403,12 +403,12 @@ static const __attribute__((__section__(STR_SECT),__aligned__(1))) struct {
 #define GID_TTY         5
 #define GID_KMEM        9
 
-static const __attribute__((__section__(STR_SECT),__aligned__(1))) struct {
+static const __attribute__((__section__(STR_SECT))) struct {
 	char   name[8];
 	short  gid;
 	char   major, minor;
 	mode_t mode;    /* mode + S_IFCHR, S_IFBLK, S_IFIFO */
-} dev_nodes[] =  {
+} __attribute__((__aligned__(1))) dev_nodes[] =  {
 	/* console must always be at the first location */
 	{ "console", GID_TTY,  5, 1, 0600 | S_IFCHR },
 	{ "mem",     GID_KMEM, 1, 1, 0640 | S_IFCHR },
