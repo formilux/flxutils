@@ -757,7 +757,7 @@ static void reopen_console()
 	for (i = 0; i < 3; i++)
 		close(i);
 
-	fd = open("dev/console", O_RDWR); // fd = 0 (stdin) or -1 (error)
+	fd = open("/dev/console", O_RDWR); // fd = 0 (stdin) or -1 (error)
 	if (fd < 0)
 		dup2(oldfd, 0); // restore 0 from old console
 
@@ -774,10 +774,10 @@ static int is_dev_populated()
 	struct stat statf;
 	int i;
 
-	if (stat("dev/console", &statf) == -1)
+	if (stat("/dev/console", &statf) == -1)
 		return 0;
 
-	if (stat("dev/null", &statf) == -1)
+	if (stat("/dev/null", &statf) == -1)
 		return 0;
 
 	return 1;
@@ -1405,7 +1405,7 @@ int main(int argc, char **argv, char **envp)
 		 * from userspace, the config file is not read again so only the hardcoded
 		 * name will be used for the executable name.
 		 */
-		conf_init = "sbin/init-sysv";
+		conf_init = "/sbin/init-sysv";
 		force_init = my_getenv(envp, "INIT=", 1);
 
 		/* if "rebuild" is passed as the only argument, then we'll try to rebuild a
@@ -1466,10 +1466,10 @@ int main(int argc, char **argv, char **envp)
 
 		/* if /dev/root is non-existent, we'll try to make it now */
 
-		if (stat("dev/root", &statf) == -1) {
+		if (stat("/dev/root", &statf) == -1) {
 			print("init/info : /dev/root does not exist. Rebuilding...\n");
 			if (stat("/", &statf) == 0) {
-				if (mknod("dev/root", 0600 | S_IFBLK, statf.st_dev) == -1) {
+				if (mknod("/dev/root", 0600 | S_IFBLK, statf.st_dev) == -1) {
 					print("init/error : mknod(/dev/root) failed\n");
 				}
 			}
