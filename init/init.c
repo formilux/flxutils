@@ -706,16 +706,27 @@ static int hex_range(char *from, uint8_t *low, uint8_t *high)
 	return 0;
 }
 
-/* converts an octal permission mode into the mode_t equivalent */
-static mode_t a2mode(char *ascii)
+/* converts an octal string into an unsigned long equivalent, reads no more
+ * than <limit> characters.
+ */
+static unsigned long base8_to_ul_lim(const char *ascii, unsigned int limit)
 {
-	mode_t m = 0;
+	unsigned long m = 0;
 
-	while ((unsigned)(*ascii - '0') < 8) {
+	while (limit && (unsigned char)(*ascii - '0') < 8) {
 		m = (m << 3) | (*ascii - '0');
 		ascii++;
+		limit--;
 	}
 	return m;
+}
+
+/* converts an octal string into an unsigned long equivalent (reads no
+ * more than 4GB.
+ */
+static unsigned long base8_to_ul(const char *ascii)
+{
+	return base8_to_ul_lim(ascii, ~0);
 }
 
 /* flushes stdin and waits for it to be done */
@@ -1787,7 +1798,7 @@ int main(int argc, char **argv, char **envp)
 			switch (token) {
 			case TOK_MD:
 				/* md path [ mode ] :  make a directory */
-				if (recursive_mkdir(cfg_args[1], (cfg_args[2] == NULL) ? 0755 : a2mode(cfg_args[2])) == -1) {
+				if (recursive_mkdir(cfg_args[1], (cfg_args[2] == NULL) ? 0755 : base8_to_ul(cfg_args[2])) == -1) {
 					error = 1;
 					print("<D>irectory : mkdir() failed\n");
 				}
@@ -1878,7 +1889,7 @@ int main(int argc, char **argv, char **envp)
 					goto finish_cmd;
 				}
 
-				multidev(a2mode(cfg_args[1]) | ((token == TOK_BL) ? S_IFBLK : S_IFCHR),
+				multidev(base8_to_ul(cfg_args[1]) | ((token == TOK_BL) ? S_IFBLK : S_IFCHR),
 					 my_atoul(cfg_args[2]), my_atoul(cfg_args[3]),
 					 my_atoul(cfg_args[4]), my_atoul(cfg_args[5]), cfg_args[6]);
 				chdir("/");
@@ -1891,7 +1902,7 @@ int main(int argc, char **argv, char **envp)
 					goto finish_cmd;
 				}
 
-				error = mknod_chown(a2mode(cfg_args[1]) | S_IFIFO,
+				error = mknod_chown(base8_to_ul(cfg_args[1]) | S_IFIFO,
 						    my_atoul(cfg_args[2]), my_atoul(cfg_args[3]),
 						    0, 0, cfg_args[4]);
 				chdir("/");
@@ -2066,7 +2077,7 @@ int main(int argc, char **argv, char **envp)
 			}
 			case TOK_MA:
 				/* U <umask> : change umask */
-				umask(a2mode(cfg_args[1]));
+				umask(base8_to_ul(cfg_args[1]));
 				break;
 			case TOK_CD:
 				/* cd <new_dir> : change current directory */
