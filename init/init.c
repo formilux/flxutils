@@ -460,6 +460,22 @@ static int streq(const char *str1, const char *str2)
 	return ((c1 | *str2) == 0);
 }
 
+/* compares strings str1 and str2 up to <limit> characters, returns non-zero if
+ * equal otherwise non-zero. <limit> must be > 0 (compared on equality).
+ */
+static int streqlen(const char *str1, const char *str2, int limit)
+{
+	char c1;
+
+	while ((c1 = *str1) && c1 == *str2) { /* the second test ensures that *str2 != 0 */
+		str1++;
+		str2++;
+		if (--limit <= 0)
+			return 1;
+	}
+	return ((c1 | *str2) == 0);
+}
+
 /* size-optimized memmove() alternative. It's 40 bytes on x86_64. */
 static void my_memmove(char *dst, const char *src, int len)
 {
@@ -523,7 +539,7 @@ static char *my_getenv(char **envp, char *var, const int remove)
 		return NULL;
 
 	while (*envp != NULL) {
-		if (strncmp(*envp, var, namelen) == 0 &&
+		if (streqlen(*envp, var, namelen) &&
 		    ((var[namelen-1] == '=') || envp[0][namelen] == '='))
 			last = envp;
 		envp++;
