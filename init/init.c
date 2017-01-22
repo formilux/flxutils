@@ -476,6 +476,14 @@ static void my_strcpy(char *dst, const char *src)
 	while ((*dst++ = *src++));
 }
 
+static int my_strlen(const char *str)
+{
+	int len;
+
+	for (len = 0; str[len]; len++);
+	return len;
+}
+
 /*
  * copies at most <size-1> chars from <src> to <dst>. Last char is always
  * set to 0, unless <size> is 0. The number of chars copied is returned
@@ -510,7 +518,7 @@ static char *my_getenv(char **envp, char *var, const int remove)
 	char **last;
 
 	last = NULL;
-	namelen = strlen(var);
+	namelen = my_strlen(var);
 	if (!namelen || !envp)
 		return NULL;
 
@@ -1107,7 +1115,7 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp)
 							 * left or right, the right size for what we
 							 * have to replace.
 							 */
-							int l = strlen(repl);
+							int l = my_strlen(repl);
 							int ofs = l - (brace_end - dollar_ptr); /* <0: reduce, >0: increase */
 
 							if (ofs + brace_end > bufend) { // too large, truncate the value.
@@ -1694,7 +1702,7 @@ int main(int argc, char **argv, char **envp)
 				int len;
 
 				if (cfg_args[1] != NULL) {
-					len = strlen(cfg_args[1]);
+					len = my_strlen(cfg_args[1]);
 					cfg_args[1][len] = '\n';
 					write(1, cfg_args[1], len + 1);
 				}
