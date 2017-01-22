@@ -205,6 +205,7 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <linux/loop.h>
+#include <errno.h>
 
 /*
  * compatibility defines in case they are missing
@@ -220,6 +221,10 @@
 
 #ifndef O_LARGEFILE
 #define O_LARGEFILE     0
+#endif
+
+#ifndef MAXPATHLEN
+#define MAXPATHLEN 256
 #endif
 
 /*
@@ -414,6 +419,7 @@ static char mounts[MAX_MNT_SIZE];
 static struct dev_varstr var[MAX_FIELDS];
 static int error;       /* an error has emerged from last operation */
 static int linuxrc;     /* non-zero if we were called as 'linuxrc' */
+static char tmp_path[MAXPATHLEN];
 
 
 /*
@@ -769,6 +775,41 @@ static int mknod_chown(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t
 	}
 
 	return error;
+}
+
+/* tries to create the specified path and its parents. Returns the zero on
+ * success, or the last mkdir() return value or zero. It stores a copy of
+ * <path> into <tmp_path> if it's not already the same string, so that inner
+ * calls can modify the path. Outer directories are created with mode 755.
+ */
+static int recursive_mkdir(const char *path, mode_t mode)
+{
+	int pos;
+	int ret;
+
+	if (path != tmp_path)
+		my_strlcpy(tmp_path, path, sizeof(tmp_path));
+
+	/* trim trailing slashes */
+	pos = my_strlen(tmp_path) - 1;
+	while (pos > 0 && tmp_path[pos] == '/')
+		tmp_path[pos--] = 0;
+
+	ret = mkdir(tmp_path, mode);
+	if (ret == -1 && errno == ENOENT) {
+		/* look for the leftmost '/' in the last '/.../' block */
+		for (; pos > 0; pos--) {
+			if (tmp_path[pos] == '/' && tmp_path[pos - 1] != '/') {
+				tmp_path[pos] = 0;
+				ret = recursive_mkdir(tmp_path, 0755);
+				tmp_path[pos] = '/';
+				if (ret == 0)
+					ret = mkdir(tmp_path, mode);
+				break;
+			}
+		}
+	}
+	return ret;
 }
 
 /* closes 0,1,2 and opens /dev/console on them instead */
@@ -1746,7 +1787,7 @@ int main(int argc, char **argv, char **envp)
 			switch (token) {
 			case TOK_MD:
 				/* md path [ mode ] :  make a directory */
-				if (mkdir(cfg_args[1], (cfg_args[2] == NULL) ? 0755 : a2mode(cfg_args[2])) == -1) {
+				if (recursive_mkdir(cfg_args[1], (cfg_args[2] == NULL) ? 0755 : a2mode(cfg_args[2])) == -1) {
 					error = 1;
 					print("<D>irectory : mkdir() failed\n");
 				}
@@ -2162,9 +2203,8 @@ int main(int argc, char **argv, char **envp)
 				print("init/err: cannot mount /var.\n");
 			else {
 				print("init/info: /var has been mounted.\n");
-				mkdir("/var", 0755);
-				mkdir("/var/tmp", 01777);
-				mkdir("/var/run",  0755);
+				recursive_mkdir("/var/tmp", 01777);
+				recursive_mkdir("/var/run",  0755);
 				print("init/info: /var has been built.\n");
 			}
 		}
