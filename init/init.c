@@ -662,13 +662,11 @@ static int varstr_break(char *str, char *type, char **set, uint8_t *scale)
  */
 static int int_range(char *from, uint8_t *low, uint8_t *high)
 {
-	char c;
-
 	*low = 0;
-	while ((c = *from) != '\0') {
-		if (isdigit(c))
-			*low = *low * 10 + c - '0';
-		else if (c == '-') {
+	while (*from) {
+		if ((unsigned char)(*from - '0') <= 9)
+			*low = *low * 10 + (*from - '0');
+		else if (*from == '-') {
 			low = high;
 			*low = 0;
 		}
