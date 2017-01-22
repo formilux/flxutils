@@ -251,7 +251,6 @@
 
 /* descriptor for a range of device minors */
 struct dev_varstr {
-	char type; /* 'c', 'h', 'i', 'I', or 0 */
 	union {
 		struct {
 			char *set;
@@ -265,6 +264,7 @@ struct dev_varstr {
 			uint8_t value;
 		} num;
 	} u;
+	char type; /* 'c', 'h', 'i', 'I', or 0 */
 	uint8_t scale;
 };
 
