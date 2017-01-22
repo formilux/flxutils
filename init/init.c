@@ -398,42 +398,6 @@ static const struct dev_node dev_nodes[] =  {
 	{ "initctl", 0600 | S_IFIFO, GID_ROOT, 0, 0 },
 };
 
-/* commonly used strings are all stored here together where the compilers
- * can try to reuse them optimally. It might not be needed anymore with
- * modern compilers.
- * this ordering is awful but it's the most efficient regarding space wasted in
- * long strings alignment with gcc-2.95.3 (gcc 3.2.3 doesn't try to align long
- * strings).
- */
-static const char __attribute__ ((__aligned__(1))) msg_ent_console[] = "Entering command line mode : enter one command per line, end with '.'\n";
-static const char __attribute__ ((__aligned__(1))) root_dir[]        = "/";
-static const char __attribute__ ((__aligned__(1))) cur_dir[]         = ".";
-static const char __attribute__ ((__aligned__(1))) dev_name[]        = "/dev";
-static const char __attribute__ ((__aligned__(1))) var_dir[]         = "/var";
-static const char __attribute__ ((__aligned__(1))) cfg_fname[]       = "/.preinit";	   /* configuration file */
-static const char __attribute__ ((__aligned__(1))) msg_err_console[] = "Command ignored, input already bound to console !\n";
-static const char __attribute__ ((__aligned__(1))) dev_console[]     = "dev/console";
-static const char __attribute__ ((__aligned__(1))) dev_null[]        = "dev/null";
-static const char __attribute__ ((__aligned__(1))) str_rebuild[]     = "rebuild";
-static const char __attribute__ ((__aligned__(1))) var_tmp[]         = "/var/tmp";
-static const char __attribute__ ((__aligned__(1))) var_run[]         = "/var/run";
-static const char __attribute__ ((__aligned__(1))) proc_self_fd[]    = "/proc/self/fd";
-static const char __attribute__ ((__aligned__(1))) proc_cmdline[]    = "/proc/cmdline";
-static const char __attribute__ ((__aligned__(1))) sbin_init_sysv[]  = "sbin/init-sysv";
-static const char __attribute__ ((__aligned__(1))) cfg_linuxrc[]     = "/.linuxrc";
-static const char __attribute__ ((__aligned__(1))) dev_options[]     = "size=4k,nr_inodes=4096,mode=755";
-static const char __attribute__ ((__aligned__(1))) str__linuxrc[]    = "/linuxrc";
-static const char __attribute__ ((__aligned__(1))) proc_dir[]        = "/proc";
-static const char __attribute__ ((__aligned__(1))) proc_mounts[]     = "/proc/mounts";
-static const char __attribute__ ((__aligned__(1))) devtmpfs_fs[]     = "devtmpfs";
-static const char __attribute__ ((__aligned__(1))) dev_root[]        = "dev/root";
-
-#define tmpfs_fs        (devtmpfs_fs + 3)       // static const char tmpfs_fs(] = "tmpfs";
-#define tmp_name        (var_tmp + 4)           // static const char tmp_name[]  = "/tmp";
-#define proc_fs         (proc_dir+1)            // static const char proc_fs[]  = "proc";
-#define fd_dir          (proc_self_fd + 11)     // static const char fd_dir[]  = "fd";
-#define str_linuxrc     (str__linuxrc+1)        // "linuxrc"
-
 
 /*
  * Global variables now.
@@ -793,7 +757,7 @@ static void reopen_console()
 	for (i = 0; i < 3; i++)
 		close(i);
 
-	fd = open(dev_console, O_RDWR); // fd = 0 (stdin) or -1 (error)
+	fd = open("dev/console", O_RDWR); // fd = 0 (stdin) or -1 (error)
 	if (fd < 0)
 		dup2(oldfd, 0); // restore 0 from old console
 
@@ -810,10 +774,10 @@ static int is_dev_populated()
 	struct stat statf;
 	int i;
 
-	if (stat(dev_console, &statf) == -1)
+	if (stat("dev/console", &statf) == -1)
 		return 0;
 
-	if (stat(dev_null, &statf) == -1)
+	if (stat("dev/null", &statf) == -1)
 		return 0;
 
 	return 1;
@@ -837,7 +801,7 @@ static char *get_dev_type()
 	int best;
 	char *ptr, *end, *mnt, *match;
 
-	if ((fd = open(proc_mounts, O_RDONLY)) == -1)
+	if ((fd = open("/proc/mounts", O_RDONLY)) == -1)
 		return NULL;
 
 	len = read(fd, mounts, sizeof(mounts) - 1);
@@ -865,7 +829,7 @@ static char *get_dev_type()
 
 		/* look for the longest exact match of "/" or "/dev" */
 		if ((ptr - mnt) > best &&
-		    strcmp(mnt, dev_name) == 0 || strcmp(mnt, root_dir) == 0) {
+		    strcmp(mnt, "/dev") == 0 || strcmp(mnt, "/") == 0) {
 			best = ptr - mnt; // counts the trailing zero
 			/* skip FS name and terminate with zero */
 			match = ptr;
@@ -893,7 +857,7 @@ char *find_arg(char *arg)
 	if (cmdline_len <= 0) {
 		int fd;
 
-		if ((fd = open(proc_cmdline, O_RDONLY)) == -1)
+		if ((fd = open("/proc/cmdline", O_RDONLY)) == -1)
 			return NULL;
 
 		cmdline_len = read(fd, cmdline, sizeof(cmdline)-1);
@@ -1421,7 +1385,7 @@ int main(int argc, char **argv, char **envp)
 	 * to link /sbin/init to /.linuxrc so that the interpreter's name is
 	 * used even if nothing is specified.
 	 */
-	if (!strcmp(argv[0], str_linuxrc) || !strcmp(argv[0], str__linuxrc)) {
+	if (!strcmp(argv[0], "linuxrc") || !strcmp(argv[0], "/linuxrc")) {
 		linuxrc = 1;
 		rebuild = 0;
 		pid1 = 0;
@@ -1434,20 +1398,20 @@ int main(int argc, char **argv, char **envp)
 		argc -= 2;
 	}
 	else
-		cfg_file = linuxrc ? (char *)cfg_linuxrc : (char *)cfg_fname;
+		cfg_file = linuxrc ? "/.linuxrc" : "/.preinit";
 
 	if (!linuxrc) {
 		/* restore the correct name. Warning: in the case where init is launched
 		 * from userspace, the config file is not read again so only the hardcoded
 		 * name will be used for the executable name.
 		 */
-		conf_init = (char *)&sbin_init_sysv; /* "sbin/init-sysv" */;
+		conf_init = "sbin/init-sysv";
 		force_init = my_getenv(envp, "INIT=", 1);
 
 		/* if "rebuild" is passed as the only argument, then we'll try to rebuild a
 		 * full /dev even if not pid==1, but only if it was not already populated
 		 */
-		rebuild = (argc == 2 && streq(argv[1], str_rebuild/*"rebuild"*/));
+		rebuild = (argc == 2 && streq(argv[1], "rebuild"));
 		pid1 = (getpid() == 1);
 	}
 	else {
@@ -1462,7 +1426,7 @@ int main(int argc, char **argv, char **envp)
 	old_umask = umask(0);
 	cfg_ok = (read_cfg(cfg_file) == 0);
 
-	chdir(root_dir); /* be sure not to stay under /dev ! */
+	chdir("/"); /* be sure not to stay under /dev ! */
 
 	/* do nothing if we're not called as the first process */
 	if (pid1 || linuxrc || rebuild) {
@@ -1472,13 +1436,13 @@ int main(int argc, char **argv, char **envp)
 		 */
 		if (linuxrc || !is_dev_populated()) {
 			print("init/info: /dev/console not found, rebuilding /dev.\n");
-			if (mount(dev_name, dev_name, devtmpfs_fs, MS_MGC_VAL, dev_options) == -1 &&
-			    mount(dev_name, dev_name, tmpfs_fs, MS_MGC_VAL, dev_options) == -1) {
+			if (mount("/dev", "/dev", "devtmpfs", MS_MGC_VAL, "size=4k,nr_inodes=4096,mode=755") == -1 &&
+			    mount("/dev", "/dev", "tmpfs",    MS_MGC_VAL, "size=4k,nr_inodes=4096,mode=755") == -1) {
 				print("init/err: cannot mount /dev.\n");
 			}
 			else {
 				int i;
-				if (chdir(dev_name) == -1)
+				if (chdir("/dev") == -1)
 					print("init/error : cannot chdir(/dev)\n");
 
 				print("init/info: /dev has been mounted.\n");
@@ -1486,10 +1450,10 @@ int main(int argc, char **argv, char **envp)
 					mknod_chown(dev_nodes[i].mode, UID_ROOT, dev_nodes[i].gid,
 						    dev_nodes[i].major, dev_nodes[i].minor, (char *)dev_nodes[i].name);
 				}
-				symlink(proc_self_fd, fd_dir);
+				symlink("/proc/self/fd", "fd");
 				print("init/info: /dev has been rebuilt.\n");
 
-				chdir(root_dir);
+				chdir("/");
 				/* if /dev was empty, we may not have had /dev/console, so the
 				 * kernel couldn't bind us to it. So let's attach to it now.
 				 */
@@ -1502,10 +1466,10 @@ int main(int argc, char **argv, char **envp)
 
 		/* if /dev/root is non-existent, we'll try to make it now */
 
-		if (stat(dev_root, &statf) == -1) {
+		if (stat("dev/root", &statf) == -1) {
 			print("init/info : /dev/root does not exist. Rebuilding...\n");
-			if (stat(root_dir, &statf) == 0) {
-				if (mknod(dev_root, 0600 | S_IFBLK, statf.st_dev) == -1) {
+			if (stat("/", &statf) == 0) {
+				if (mknod("dev/root", 0600 | S_IFBLK, statf.st_dev) == -1) {
 					print("init/error : mknod(/dev/root) failed\n");
 				}
 			}
@@ -1711,7 +1675,7 @@ int main(int argc, char **argv, char **envp)
 				/* td (no arg) : tests if /dev is a devtmpfs and returns OK otherwise NOK. */
 				char *res = get_dev_type();
 
-				error = !res || (strcmp(res, devtmpfs_fs) != 0);
+				error = !res || (strcmp(res, "devtmpfs") != 0);
 				goto finish_cmd;
 			}
 
@@ -1745,9 +1709,9 @@ int main(int argc, char **argv, char **envp)
 					goto finish_cmd;
 
 				if (cmd_input == INPUT_KBD) {
-					ret_msg = (char *)msg_err_console;
+					ret_msg = "Command ignored, input already bound to console!\n";
 				} else {
-					ret_msg = (char *)msg_ent_console;
+					ret_msg = "Entering command line mode : enter one command per line, end with '.'\n";
 					kbd_level = brace_level;
 				}
 				error = context[brace_level].error;
@@ -1844,7 +1808,7 @@ int main(int argc, char **argv, char **envp)
 				/* bl <mode> <uid> <gid> <major> <minor> <naming rule> : build a block device */
 			case TOK_CH:
 				/* ch <mode> <uid> <gid> <major> <minor> <naming rule> : build a character device */
-				if (chdir(dev_name) == -1) {
+				if (chdir("/dev") == -1) {
 					print("<B>lock_dev/<C>har_dev : cannot chdir(/dev)\n");
 					error = 1;
 					goto finish_cmd;
@@ -1853,11 +1817,11 @@ int main(int argc, char **argv, char **envp)
 				multidev(a2mode(cfg_args[1]) | ((token == TOK_BL) ? S_IFBLK : S_IFCHR),
 					 my_atoul(cfg_args[2]), my_atoul(cfg_args[3]),
 					 my_atoul(cfg_args[4]), my_atoul(cfg_args[5]), cfg_args[6]);
-				chdir(root_dir);
+				chdir("/");
 				goto finish_cmd;
 			case TOK_FI:
 				/* F <mode> <uid> <gid> <name> : build a fifo */
-				if (chdir(dev_name) == -1) {
+				if (chdir("/dev") == -1) {
 					print("<F>ifo : cannot chdir(/dev)\n");
 					error = 1;
 					goto finish_cmd;
@@ -1866,7 +1830,7 @@ int main(int argc, char **argv, char **envp)
 				error = mknod_chown(a2mode(cfg_args[1]) | S_IFIFO,
 						    my_atoul(cfg_args[2]), my_atoul(cfg_args[3]),
 						    0, 0, cfg_args[4]);
-				chdir(root_dir);
+				chdir("/");
 				goto finish_cmd;
 			} /* end of switch() */
 
@@ -2060,7 +2024,7 @@ int main(int argc, char **argv, char **envp)
 					error = 1;
 					print("cr (chroot) : error during chroot()\n");
 				}
-				if (chdir(root_dir) == -1) {
+				if (chdir("/") == -1) {
 					error = 1;
 					print("cd : error during chdir()\n");
 				}
@@ -2074,13 +2038,13 @@ int main(int argc, char **argv, char **envp)
 					print("<P>ivot : error during chdir(new root)\n");
 				}
 
-				if (pivot_root(cur_dir, cfg_args[2]) == -1) {
+				if (pivot_root(".", cfg_args[2]) == -1) {
 					error = 1;
 					print("<P>ivot : error during pivot_root()\n");
 				}
 
-				chroot(cur_dir);
-				if (chdir(root_dir) == -1) {
+				chroot(".");
+				if (chdir("/") == -1) {
 					error = 1;
 					print("<P>ivot : error during chdir(/)\n");
 				}
@@ -2162,22 +2126,22 @@ int main(int argc, char **argv, char **envp)
 		 *   - mount /proc
 		 *   - mount /var as tmpfs if it's empty and /tmp is a symlink
 		 */
-		if (mount(proc_dir, proc_dir, proc_fs, MS_MGC_VAL, NULL) == -1)
+		if (mount("/proc", "/proc", "proc", MS_MGC_VAL, NULL) == -1)
 			print("init/err: cannot mount /proc.\n");
 		else
 			print("init/info: /proc mounted RW.\n");
 
 		/* we'll see if we want to build /var */
-		if ((stat(var_tmp, &statf) == -1) && /* no /var/tmp */
-		    (stat(tmp_name, &statf) == 0) && S_ISLNK(statf.st_mode)) { /* and /tmp is a symlink */
+		if ((stat("/var/tmp", &statf) == -1) && /* no /var/tmp */
+		    (stat("/tmp", &statf) == 0) && S_ISLNK(statf.st_mode)) { /* and /tmp is a symlink */
 			print("init/info: building /var.\n");
-			if (mount(var_dir, var_dir, tmpfs_fs, MS_MGC_VAL, NULL) == -1)
+			if (mount("/var", "/var", "tmpfs", MS_MGC_VAL, NULL) == -1)
 				print("init/err: cannot mount /var.\n");
 			else {
 				print("init/info: /var has been mounted.\n");
-				mkdir(var_dir, 0755);
-				mkdir(var_tmp, 01777);
-				mkdir(var_run,  0755);
+				mkdir("/var", 0755);
+				mkdir("/var/tmp", 01777);
+				mkdir("/var/run",  0755);
 				print("init/info: /var has been built.\n");
 			}
 		}
@@ -2219,7 +2183,7 @@ int main(int argc, char **argv, char **envp)
 		 * want a prompt or something special.
 		 */
 		close(2); close(1); close(0);
-		umount2(dev_name, MNT_DETACH);
+		umount2("/dev", MNT_DETACH);
 	}
 
 	umask(old_umask);
