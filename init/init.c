@@ -828,8 +828,7 @@ static char *get_dev_type()
 			*(ptr++) = 0;
 
 		/* look for the longest exact match of "/" or "/dev" */
-		if ((ptr - mnt) > best &&
-		    (strcmp(mnt, "/dev") == 0 || strcmp(mnt, "/") == 0)) {
+		if ((ptr - mnt) > best && (streq(mnt, "/dev") || streq(mnt, "/"))) {
 			best = ptr - mnt; // counts the trailing zero
 			/* skip FS name and terminate with zero */
 			match = ptr;
@@ -1385,7 +1384,7 @@ int main(int argc, char **argv, char **envp)
 	 * to link /sbin/init to /.linuxrc so that the interpreter's name is
 	 * used even if nothing is specified.
 	 */
-	if (!strcmp(argv[0], "linuxrc") || !strcmp(argv[0], "/linuxrc")) {
+	if (streq(argv[0], "linuxrc") || streq(argv[0], "/linuxrc")) {
 		linuxrc = 1;
 		rebuild = 0;
 		pid1 = 0;
@@ -1659,7 +1658,7 @@ int main(int argc, char **argv, char **envp)
 
 				while (*env) {
 					//printf("testing <%s> against <%s>\n", cfg_args[1], *env);
-					if (!strcmp(*env, cfg_args[1]))
+					if (streq(*env, cfg_args[1]))
 						break;
 					env++;
 				}
@@ -1669,13 +1668,13 @@ int main(int argc, char **argv, char **envp)
 				/* eq str1 str2 : compare two strings (possibly containing variables).
 				 * The result is OK if identical, otherwise NOK.
 				 */
-				error = (strcmp(cfg_args[1], cfg_args[2]) != 0);
+				error = !streq(cfg_args[1], cfg_args[2]);
 				goto finish_cmd;
 			} else if (token == TOK_TD) {
 				/* td (no arg) : tests if /dev is a devtmpfs and returns OK otherwise NOK. */
 				char *res = get_dev_type();
 
-				error = !res || (strcmp(res, "devtmpfs") != 0);
+				error = !res || !streq(res, "devtmpfs");
 				goto finish_cmd;
 			}
 
