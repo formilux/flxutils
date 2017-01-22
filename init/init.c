@@ -191,6 +191,7 @@
   /fs should be FAT-compatible, at least for its root structure.
 */
 
+#include <stdint.h>
 #include <stdio.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -234,9 +235,6 @@ static void print(char *c)
 #endif
 
 #define ATOL(x)         my_atoul(x)
-
-typedef unsigned char uchar;
-
 
 /* this ordering is awful but it's the most efficient regarding space wasted in
  * long strings alignment with gcc-2.95.3 (gcc 3.2.3 doesn't try to align long
@@ -291,15 +289,15 @@ struct dev_varstr {
 			char *set;
 			char *ptr;
 			char value; /* value to be printed */
-			uchar index; /* index in the set */
+			uint8_t index; /* index in the set */
 		} chr;
 		struct {
-			uchar low;
-			uchar high;
-			uchar value;
+			uint8_t low;
+			uint8_t high;
+			uint8_t value;
 		} num;
 	} u;
-	uchar scale;
+	uint8_t scale;
 };
 
 enum {
@@ -934,7 +932,7 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp)
 }
 
 /* makes a dev entry. continues on error, but reports them. */
-static inline int mknod_chown(mode_t mode, uid_t uid, gid_t gid, uchar major, uchar minor, char *name)
+static inline int mknod_chown(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t minor, char *name)
 {
 	int error;
 
@@ -967,7 +965,7 @@ static int is_dev_populated()
 }
 
 /* breaks a 3-fields, comma-separated string into 3 fields */
-static inline int varstr_break(char *str, char *type, char **set, uchar *scale)
+static inline int varstr_break(char *str, char *type, char **set, uint8_t *scale)
 {
 	int state;
 	char *res[3];
@@ -993,7 +991,7 @@ static inline int varstr_break(char *str, char *type, char **set, uchar *scale)
 /* reads a range from a string of the form "low-high" or "value".
  * Returns 0 if OK, or 1 if error.
  */
-static int int_range(char *from, uchar *low, uchar *high)
+static int int_range(char *from, uint8_t *low, uint8_t *high)
 {
 	char c;
 
@@ -1018,9 +1016,9 @@ static int int_range(char *from, uchar *low, uchar *high)
 /* reads a range from a hex string of the form "low-high" or "value".
  * Returns 0 if OK, or 1 if error.
  */
-static int hex_range(char *from, uchar *low, uchar *high)
+static int hex_range(char *from, uint8_t *low, uint8_t *high)
 {
-	uchar c;
+	uint8_t c;
 	*low = 0;
 	while ((c = *from) != '\0') {
 		if (c == '-') {
@@ -1060,7 +1058,7 @@ static inline char *addchr(char *dest, char chr)
 	return dest;
 }
 
-static char *addint(char *dest, uchar num)
+static char *addint(char *dest, uint8_t num)
 {
 	int div;
 	char *out = dest;
@@ -1080,9 +1078,9 @@ static char *addint(char *dest, uchar num)
 	return out;
 }
 
-static char *addhex(char *dest, uchar num)
+static char *addhex(char *dest, uint8_t num)
 {
-	uchar c;
+	uint8_t c;
 
 	if (num > 0x0F) {
 		c = num >> 4;
@@ -1098,9 +1096,9 @@ static char *addhex(char *dest, uchar num)
  * and compute the corresponding minor number by adding all the relevant
  * fields' values
  */
-static void name_and_minor(char *name, uchar *minor, int fields)
+static void name_and_minor(char *name, uint8_t *minor, int fields)
 {
-	uchar min;
+	uint8_t min;
 	int f;
 
 	min = 0;
@@ -1180,7 +1178,7 @@ static int inc_var_index(int f)
 
 
 /* makes one or several device inodes depending on the rule <rule> */
-static void multidev(mode_t mode, uid_t uid, gid_t gid, uchar major, uchar minor, char *rule)
+static void multidev(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t minor, char *rule)
 {
 	enum {
 		ST_STRING = 0,
@@ -1269,7 +1267,7 @@ static void multidev(mode_t mode, uid_t uid, gid_t gid, uchar major, uchar minor
 
 	while (1) {
 		char name[MAX_DEVNAME_LEN];
-		uchar minor_offset;
+		uint8_t minor_offset;
 		int f;
 
 		name_and_minor(name, &minor_offset, field);
