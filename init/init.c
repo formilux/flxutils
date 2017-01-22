@@ -218,19 +218,6 @@
 #define O_LARGEFILE     0
 #endif
 
-#ifdef DEBUG
-static void print(char *c)
-{
-	char *p = c;
-
-	while (*p)
-		p++;
-
-	write(0, c, p-c);
-}
-#else
-#define print(a,...)    do { } while (0)
-#endif
 
 /* this ordering is awful but it's the most efficient regarding space wasted in
  * long strings alignment with gcc-2.95.3 (gcc 3.2.3 doesn't try to align long
@@ -431,6 +418,20 @@ static int linuxrc;     /* non-zero if we were called as 'linuxrc' */
 /* the two input modes */
 #define INPUT_FILE 0
 #define INPUT_KBD  1
+
+
+/* Used only to emit debugging messages when compiled with -DDEBUG */
+static void print(char *c)
+{
+#ifdef DEBUG
+	char *p = c;
+
+	while (*p)
+		p++;
+
+	write(0, c, p-c);
+#endif
+}
 
 static unsigned long my_atoul(const char *s)
 {
