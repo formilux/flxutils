@@ -835,7 +835,7 @@ static void reopen_console()
 	for (i = 0; i < 3; i++)
 		close(i);
 
-	fd = open("/dev/console", O_RDWR); // fd = 0 (stdin) or -1 (error)
+	fd = open("/dev/console", O_RDWR, 0); // fd = 0 (stdin) or -1 (error)
 	if (fd < 0)
 		dup2(oldfd, 0); // restore 0 from old console
 
@@ -909,7 +909,7 @@ static int tar_extract(const char *action, const char *file, const char *dir)
 	if (!action)
 		action = "";
 
-	ret = fd = open(file, O_RDONLY);
+	ret = fd = open(file, O_RDONLY, 0);
 	if (ret < 0)
 		goto out_ret;
 
@@ -1076,7 +1076,7 @@ static char *get_dev_type()
 	int best;
 	char *ptr, *end, *mnt, *match;
 
-	if ((fd = open("/proc/mounts", O_RDONLY)) == -1)
+	if ((fd = open("/proc/mounts", O_RDONLY, 0)) == -1)
 		return NULL;
 
 	len = read(fd, mounts, sizeof(mounts) - 1);
@@ -1131,7 +1131,7 @@ char *find_arg(char *arg)
 	if (cmdline_len <= 0) {
 		int fd;
 
-		if ((fd = open("/proc/cmdline", O_RDONLY)) == -1)
+		if ((fd = open("/proc/cmdline", O_RDONLY, 0)) == -1)
 			return NULL;
 
 		cmdline_len = read(fd, cmdline, sizeof(cmdline)-1);
@@ -1187,7 +1187,7 @@ static int read_cfg(char *cfg_file)
 	int cfg_size;
 
 	if (cfg_line == NULL) {
-		if (((cfg_fd = open(cfg_file, O_RDONLY)) == -1) ||
+		if (((cfg_fd = open(cfg_file, O_RDONLY, 0)) == -1) ||
 		    ((cfg_size = read(cfg_fd, cfg_data, sizeof(cfg_data) - 1)) == -1)) {
 			return -1;
 		}
@@ -2022,7 +2022,7 @@ int main(int argc, char **argv, char **envp)
 				if (stat(cfg_args[1], &stat_buf) == -1)
 					goto stat_err;
 
-				src = open(cfg_args[1], O_RDONLY);
+				src = open(cfg_args[1], O_RDONLY, 0);
 				if (src < 0)
 					goto open_err_src;
 
@@ -2207,7 +2207,7 @@ int main(int argc, char **argv, char **envp)
 
 					/* create a session, become the session leader and steal the tty */
 					if (setsid() != -1)
-						ioctl(0, TIOCSCTTY, 1);
+						ioctl(0, TIOCSCTTY, (void *)1);
 
 					/* set this terminal to our process group */
 					tcsetpgrp(0, getpgrp());
@@ -2357,26 +2357,26 @@ int main(int argc, char **argv, char **envp)
 				struct loop_info loopinfo;
 				int lfd, ffd;
 
-				if ((lfd = open (cfg_args[1], O_RDONLY)) < 0) {
+				if ((lfd = open(cfg_args[1], O_RDONLY, 0)) < 0) {
 					error = 1;
 					print("(l)osetup : error opening loop device\n");
 					break;
 				}
-				if ((ffd = open (cfg_args[2], O_RDONLY)) < 0) {
+				if ((ffd = open(cfg_args[2], O_RDONLY, 0)) < 0) {
 					error = 1;
 					print("(l)osetup : error opening image\n");
 					goto losetup_close_all;
 				}
 				memset(&loopinfo, 0, sizeof (loopinfo));
 				my_strlcpy(loopinfo.lo_name, cfg_args[2], LO_NAME_SIZE);
-				if (ioctl(lfd, LOOP_SET_FD, ffd) < 0) {
+				if (ioctl(lfd, LOOP_SET_FD, (void *)(long)ffd) < 0) {
 					error = 1;
 					print("(l)osetup : error during LOOP_SET_FD\n");
 					goto losetup_close_all;
 				}
 				if (ioctl(lfd, LOOP_SET_STATUS, &loopinfo) < 0) {
 					error = 1;
-					ioctl(lfd, LOOP_CLR_FD, 0);
+					ioctl(lfd, LOOP_CLR_FD, (void *)0);
 					print("(l)osetup : error during LOOP_SET_STATUS\n");
 					goto losetup_close_all;
 				}
