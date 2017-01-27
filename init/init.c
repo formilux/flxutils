@@ -191,6 +191,7 @@
   /fs should be FAT-compatible, at least for its root structure.
 */
 
+#ifndef NOLIBC
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -206,6 +207,7 @@
 #include <sys/stat.h>
 #include <linux/loop.h>
 #include <errno.h>
+#endif
 
 /*
  * compatibility defines in case they are missing

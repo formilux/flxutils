@@ -39,6 +39,7 @@
 
 */
 
+#ifndef NOLIBC
 #include <stdio.h>
 #include <sys/types.h>
 #include <fcntl.h>
@@ -49,6 +50,7 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <linux/loop.h>
+#endif
 
 
 //#ifdef DEBUG
