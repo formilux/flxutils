@@ -151,13 +151,13 @@ int main(int argc, char **argv) {
 
     fd = open(device, readonly ? O_RDONLY : O_RDWR, 0);
     if (fd < 0)
-	error(1, "Failed to open the device :");
+	error(1, "Failed to open the device");
 
     if (lseek(fd, SECTOR_SIZE * 2, SEEK_SET) < 0)
-	error(2, "Cannot seek to the sector :");
+	error(2, "Cannot seek to the sector");
 
     if (read(fd, sector, SECTOR_SIZE) != SECTOR_SIZE)
-	error(2, "Read error or partial read :");
+	error(2, "Read error or partial read");
 
     /* sanity checks */
     if (sector[STAGE2_VER_MAJ_OFFS]   != COMPAT_VERSION_MAJOR ||
@@ -199,10 +199,10 @@ int main(int argc, char **argv) {
     *(unsigned *)&sector[STAGE2_SAVED_ENTRYNO] = new_entryno;
 
     if (lseek(fd, SECTOR_SIZE * 2, SEEK_SET) < 0)
-	error(4, "Cannot seek to the sector :");
+	error(4, "Cannot seek to the sector");
 
     if (write(fd, sector, SECTOR_SIZE) != SECTOR_SIZE)
-	error(4, "Write error :");
+	error(4, "Write error");
 
     if (!quiet) {
 	    printstr("Next boot entry changed to #");
