@@ -44,13 +44,45 @@ void usage(char *name);
 void error(int err, char *msg);
 void die(int err, char *msg);
 
+void printerr(const char *msg)
+{
+    write(2, msg, strlen(msg));
+}
+
+void printstr(const char *msg)
+{
+    write(1, msg, strlen(msg));
+}
+
+const char *ltoa(long in)
+{
+	/* large enough for -9223372036854775808 */
+	static char buffer[21];
+	char       *pos = buffer + sizeof(buffer) - 1;
+	int         neg = in < 0;
+	unsigned long n = neg ? -in : in;
+
+	*pos-- = '\0';
+	do {
+		*pos-- = '0' + n % 10;
+		n /= 10;
+		if (pos < buffer)
+			return pos + 1;
+	} while (n);
+
+	if (neg)
+		*pos-- = '-';
+	return pos + 1;
+}
+
 void error(int err, char *msg) {
     perror(msg);
     exit(err);
 }
 
 void die(int err, char *msg) {
-    fprintf(stderr, "%s\n", msg);
+    printerr(msg);
+    printerr("\n");
     exit(err);
 }
 
@@ -60,19 +92,27 @@ void usage(char *name) {
     if (n)
 	name = n + 1;
 
-    fprintf(stderr,
-	    "%s: validate last boot entry in GRUB MBR.\n"
-	    "Usage:\n"
-	    "\t%s [-q] <device>\n"
+    printerr(name);
+    printerr(": validate last boot entry in GRUB MBR.\n"
+             "Usage:\n\t");
+
+    printerr(name);
+    printerr(" [-q] <device>\n"
 	    "\t\tshows what next boot entry will be used on device <device>.\n"
 	    "\t\tThe -q argument makes the program quiet.\n"
-	    "\n\t%s [-q] <device> <entry>\n"
+	    "\n\t");
+
+    printerr(name);
+    printerr(" [-q] <device> <entry>\n"
 	    "\t\tsets next boot entry to <entry> on device <device>.\n"
-	    "\n\t%s [-q] <device> <-round>\n"
+	    "\n\t");
+
+    printerr(name);
+    printerr(" [-q] <device> <-round>\n"
 	    "\t\tsets next boot entry to (current-1) rounded to <round>.\n"
 	    "\t\tThis permits to revalidate the first entry in a series of\n"
 	    "\t\t<round> retries leading to a successful boot.\n"
-	    "", name, name, name, name);
+	    "");
 
     exit(1);
 }
@@ -126,19 +166,17 @@ int main(int argc, char **argv) {
 	die(3, "Aborting: GRUB MBR signature not found.");
     }
 
-    if (!quiet)
-	printf("Found GRUB %c%c%c%c MBR signature.\n",
-	       sector[STAGE2_VER_STR_OFFS],
-	       sector[STAGE2_VER_STR_OFFS+1],
-	       sector[STAGE2_VER_STR_OFFS+2],
-	       sector[STAGE2_VER_STR_OFFS+3]
-	       );
+    if (!quiet) {
+	printstr("Found GRUB ");
+	write(1, &sector[STAGE2_VER_STR_OFFS], 4);
+	printstr(" MBR signature.\n");
+    }
 
     entryno = *(unsigned *)&sector[STAGE2_SAVED_ENTRYNO];
     if (readonly) {
 	if (!quiet)
-	    printf("Next boot will use entry #");
-	printf("%d\n", entryno);
+	    printstr("Next boot will use entry #");
+	printstr(ltoa(entryno)); printstr("\n");
 	exit(0);
     }
 
@@ -166,8 +204,10 @@ int main(int argc, char **argv) {
     if (write(fd, sector, SECTOR_SIZE) != SECTOR_SIZE)
 	error(4, "Write error :");
 
-    if (!quiet)
-	printf("Next boot entry changed to #%d\n", new_entryno);
+    if (!quiet) {
+	    printstr("Next boot entry changed to #");
+	    printstr(ltoa(new_entryno)); printstr("\n");
+    }
     fsync(fd);
     close(fd);
     exit(0);
