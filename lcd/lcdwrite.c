@@ -2,7 +2,7 @@
 #include <sys/fcntl.h>
 #include <string.h>
 
-main(int argc, char **argv) {
+int main(int argc, char **argv) {
   int fd;
   char buf[1024];
   int len;
