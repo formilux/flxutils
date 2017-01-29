@@ -149,7 +149,7 @@ int main(int argc, char **argv) {
     if (!readonly)
 	new_entryno = atoi(argv[1]);
 
-    fd = open(device, readonly ? O_RDONLY : O_RDWR);
+    fd = open(device, readonly ? O_RDONLY : O_RDWR, 0);
     if (fd < 0)
 	error(1, "Failed to open the device :");
 
