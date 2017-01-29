@@ -5,7 +5,12 @@ SSTRIP  ?= sstrip
 UCLIBC	?= uclibc
 
 CC_ORIG := $(CC)
+
+ifeq ($(NOLIBC),)
 override CC := $(UCLIBC) $(CC) -Os
+else
+override CC := $(CC) -Os -nostdlib -lgcc -include $(NOLIBC)
+endif
 
 CFLAGS=$(GCC_ARCH_SMALL) $(GCC_CPU_SMALL) $(GCC_OPT_SMALL) -fno-exceptions -fno-asynchronous-unwind-tables -fno-unwind-tables
 #-mpreferred-stack-boundary=2 -malign-jumps=0 -malign-loops=0 -malign-functions=0 -Os -march=i386 -mcpu=i386
