@@ -18,6 +18,7 @@
  *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
+#ifndef NOLIBC
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -25,6 +26,7 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <unistd.h>
+#endif
 
 /* from stage1/stage1.h */
 #define COMPAT_VERSION_MAJOR	3
@@ -54,6 +56,7 @@ void printstr(const char *msg)
     write(1, msg, strlen(msg));
 }
 
+#ifndef NOLIBC
 const char *ltoa(long in)
 {
 	/* large enough for -9223372036854775808 */
@@ -74,6 +77,17 @@ const char *ltoa(long in)
 		*pos-- = '-';
 	return pos + 1;
 }
+#else
+void perror(const char *msg)
+{
+	int err = errno;
+
+	printerr((msg && *msg) ? msg : "errno");
+	printerr(" : ");
+	printerr(ltoa(err));
+	printerr("\n");
+}
+#endif
 
 void error(int err, char *msg) {
     perror(msg);
