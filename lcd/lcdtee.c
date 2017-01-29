@@ -6,7 +6,7 @@ int main(int argc, char **argv) {
   char buf[1024];
   int len;
 
-  fd = open("/dev/lcd", O_WRONLY);
+  fd = open("/dev/lcd", O_WRONLY, 0);
 
   while ((len = read(0, buf, sizeof(buf))) > 0) {
 		write(1, buf, len);

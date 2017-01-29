@@ -8,7 +8,7 @@ int main(int argc, char **argv) {
   int len;
 
 
-  if ((fd = open("/dev/lcd", O_WRONLY)) == -1)
+  if ((fd = open("/dev/lcd", O_WRONLY, 0)) == -1)
 	return 0;
 
 
