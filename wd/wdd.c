@@ -2,6 +2,7 @@
  * wdd - simple watchdog daemon - 2003-2004 - willy tarreau
  */
 
+#ifndef NOLIBC
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -10,6 +11,7 @@
 #include <sys/wait.h>
 #include <unistd.h>
 #include <string.h>
+#endif
 
 const char dev_wd_str[] = "/dev/watchdog";	/* standard entry */
 const char dev_misc_str[] = "/dev/misc/watchdog";  /* devfs entry */
