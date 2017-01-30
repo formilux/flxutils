@@ -134,9 +134,9 @@ int main (int argc, char **argv) {
     /* note that dev is -1 now ;-) */
     while (1) {
 	if (dev == -1)
-	    dev = open(dev_wd_str, O_RDWR);
+	    dev = open(dev_wd_str, O_RDWR, 0);
 	if (dev == -1)
-	    dev = open(dev_misc_str, O_RDWR);
+	    dev = open(dev_misc_str, O_RDWR, 0);
 	if ((dev != -1) && (write(dev, dev_wd_str, 1) != 1)) {
 	    /* write error, we'll restart */
 	    close(dev);
