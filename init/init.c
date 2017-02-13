@@ -207,6 +207,8 @@
 #include <sys/stat.h>
 #include <linux/loop.h>
 #include <errno.h>
+#include <dirent.h>
+#include <syscall.h>
 #endif
 
 /*
@@ -227,6 +229,21 @@
 
 #ifndef MAXPATHLEN
 #define MAXPATHLEN 256
+#endif
+
+#ifndef NOLIBC
+struct linux_dirent64 {
+	uint64_t       d_ino;
+	int64_t        d_off;
+	unsigned short d_reclen;
+	unsigned char  d_type;
+	char           d_name[];
+};
+
+static int getdents64(int fd, struct linux_dirent64 *dirp, unsigned int count)
+{
+	return syscall(SYS_getdents64, fd, dirp, count);
+}
 #endif
 
 /*
@@ -332,6 +349,7 @@ enum {
 	TOK_WK,                /* wk : wait key */
 	TOK_TD,                /* td : test /dev for devtmpfs support */
 	TOK_TA,                /* ta : tar "t"/"x"/"xv" archive $2 to dir #3 */
+	TOK_LS,                /* ls : list files in DIR $1 */
 	/* better add new commands above */
 	TOK_OB,	               /* {  : begin a command block */
 	TOK_CB,	               /* }  : end a command block */
@@ -384,6 +402,7 @@ static const struct token tokens[] = {
 	"wk",   0, 2,   /* TOK_WK */
 	"td",   0, 0,   /* TOK_TD */
 	"ta",   0, 3,   /* TOK_TA */
+	"ls",   0, 0,   /* TOK_LS */
 	"{",  '{', 0,   /* TOK_OB */
 	"}",  '}', 0,   /* TOK_CB */
 	".",  '.', 0,   /* TOK_DOT : put every command before this one */
@@ -1060,6 +1079,75 @@ out_fail:
 	goto out_close;
 }
 
+/* Lists files and dirs found in <dir>. Optionally takes "[-]e" to only test
+ * for file existence (non-empty dir), "[-]l" for the long output format, where
+ * each entry is prefixed with one of [bcdlps] depending on its type.
+ * Returns 0 on success or -1 with errno possibly set. For the -e test, returns
+ * -1 if the directory is empty.
+ */
+static int list_dir(const char *fmt, const char *dir)
+{
+	/* man getdents64 for the details, or include/linux/dirent.h */
+	struct linux_dirent64 *d;
+	const char *str;
+	char buffer[4096];
+	int ret, len, pos;
+	int fd, count;
+
+	if (!fmt)
+		fmt = "";
+
+	if (!dir || !*dir) {
+		dir = fmt;
+		fmt = "";
+	}
+
+	if (!*dir)
+		dir = ".";
+
+	if (*fmt == '-')
+		fmt++;
+
+	ret = fd = open(dir, O_RDONLY | O_DIRECTORY, 0);
+	if (ret < 0)
+		goto out_ret;
+
+	ret = count = 0;
+	while ((ret = len = getdents64(fd, (void *)buffer, sizeof(buffer))) > 0) {
+		for (pos = 0; pos < len; pos += d->d_reclen) {
+			d = (struct linux_dirent64 *)&buffer[pos];
+
+			count++;
+			if (*fmt == 'e')
+				continue;
+			else if (*fmt == 'l') {
+				switch (d->d_type) {
+				case DT_REG  : str = "- "; break;
+				case DT_DIR  : str = "d "; break;
+				case DT_FIFO : str = "p "; break;
+				case DT_SOCK : str = "s "; break;
+				case DT_LNK  : str = "l "; break;
+				case DT_CHR  : str = "c "; break;
+				case DT_BLK  : str = "b "; break;
+				default      : str = "? "; break;
+				}
+
+				write(1, str, 2);
+			}
+			write(1, d->d_name, my_strlen(d->d_name));
+			write(1, "\n", 1);
+		}
+	}
+	/* here we have ret = 0 on success or -1 on error. We may want to change
+	 * this to only check whether something exists in the directory (-e).
+	 */
+
+	if (*fmt == 'e')
+		ret = count ? 0 : -1;
+	close(fd);
+out_ret:
+	return ret;
+}
 
 /*
  * Functions below are totally specific to the program and its configuration
@@ -2387,6 +2475,9 @@ int main(int argc, char **argv, char **envp)
 				break;
 			case TOK_TA:
 				error = -tar_extract(cfg_args[1], cfg_args[2], cfg_args[3]);
+				break;
+			case TOK_LS:
+				error = -list_dir(cfg_args[1], cfg_args[2]);
 				break;
 			}
 			default:
