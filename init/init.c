@@ -1121,17 +1121,43 @@ static int list_dir(const char *fmt, const char *dir)
 			if (*fmt == 'e')
 				continue;
 			else if (*fmt == 'l') {
+#if DT_UNKNOWN == 0 && DT_SOCK == 12
+				/* this should always be true on linux, this avoids the switch/case
+				 * and saves around 100 bytes on x86_64. We need a single contigous
+				 * string to emit 2 chars at once...
+				 */
+				unsigned int type = d->d_type;
+				static const char code[] =
+					"? " // 0 == DT_UNKNOWN
+					"p " // 1 == DT_FIFO
+					"c " // 2 == DT_CHR
+					"? " // 3
+					"d " // 4 == DT_DIR
+					"? " // 5
+					"b " // 6 == DT_BLK
+					"? " // 7
+					"- " // 8 == DT_REG
+					"? " // 9
+					"l " // 10 == DT_LNK
+					"? " // 11
+					"s " // 12 == DT_SOCK
+					"";
+
+				if (type > DT_SOCK)
+					type = DT_UNKNOWN;
+				str = code + type * 2;
+#else
 				switch (d->d_type) {
-				case DT_REG  : str = "- "; break;
-				case DT_DIR  : str = "d "; break;
 				case DT_FIFO : str = "p "; break;
-				case DT_SOCK : str = "s "; break;
-				case DT_LNK  : str = "l "; break;
 				case DT_CHR  : str = "c "; break;
+				case DT_DIR  : str = "d "; break;
 				case DT_BLK  : str = "b "; break;
+				case DT_REG  : str = "- "; break;
+				case DT_LNK  : str = "l "; break;
+				case DT_SOCK : str = "s "; break;
 				default      : str = "? "; break;
 				}
-
+#endif
 				write(1, str, 2);
 			}
 			write(1, d->d_name, my_strlen(d->d_name));
