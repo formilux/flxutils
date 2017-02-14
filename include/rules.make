@@ -12,7 +12,7 @@ else
 override CC := $(CC) -Os -nostdlib -include $(NOLIBC)
 endif
 
-CFLAGS=$(GCC_ARCH_SMALL) $(GCC_CPU_SMALL) $(GCC_OPT_SMALL) -fno-exceptions -fno-asynchronous-unwind-tables -fno-unwind-tables
+CFLAGS=$(GCC_ARCH_SMALL) $(GCC_CPU_SMALL) $(GCC_OPT_SMALL) -fno-exceptions -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-ident
 #-mpreferred-stack-boundary=2 -malign-jumps=0 -malign-loops=0 -malign-functions=0 -Os -march=i386 -mcpu=i386
 LDFLAGS=-s -Wl,--gc-sections
 
