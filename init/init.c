@@ -209,6 +209,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include <syscall.h>
+#include <linux/reboot.h>
 #endif
 
 /*
@@ -350,6 +351,10 @@ enum {
 	TOK_TD,                /* td : test /dev for devtmpfs support */
 	TOK_TA,                /* ta : tar "t"/"x"/"xv" archive $2 to dir #3 */
 	TOK_LS,                /* ls : list files in DIR $1 */
+	TOK_HA,                /* ha : halt */
+	TOK_PO,                /* po : power off */
+	TOK_RB,                /* rb : reboot */
+	TOK_SP,                /* sp : suspend */
 	/* better add new commands above */
 	TOK_OB,	               /* {  : begin a command block */
 	TOK_CB,	               /* }  : end a command block */
@@ -403,6 +408,10 @@ static const struct token tokens[] = {
 	"td",   0, 0,   /* TOK_TD */
 	"ta",   0, 3,   /* TOK_TA */
 	"ls",   0, 0,   /* TOK_LS */
+	"ha",   0, 0,   /* TOK_HA */
+	"po",   0, 0,   /* TOK_PO */
+	"rb",   0, 0,   /* TOK_RB */
+	"sp",   0, 0,   /* TOK_SP */
 	"{",  '{', 0,   /* TOK_OB */
 	"}",  '}', 0,   /* TOK_CB */
 	".",  '.', 0,   /* TOK_DOT : put every command before this one */
@@ -2504,6 +2513,15 @@ int main(int argc, char **argv, char **envp)
 				break;
 			case TOK_LS:
 				error = -list_dir(cfg_args[1], cfg_args[2]);
+				break;
+			case TOK_HA:  /* ha : halt */
+			case TOK_PO:  /* po : power off */
+			case TOK_RB:  /* rb : reboot */
+			case TOK_SP:  /* sp : suspend */
+				error = reboot(token == TOK_HA ? LINUX_REBOOT_CMD_HALT :
+				               token == TOK_PO ? LINUX_REBOOT_CMD_POWER_OFF :
+				               token == TOK_RB ? LINUX_REBOOT_CMD_RESTART :
+				               /* TOK_SP */      LINUX_REBOOT_CMD_SW_SUSPEND);
 				break;
 			}
 			default:
