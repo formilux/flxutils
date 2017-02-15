@@ -1,3 +1,71 @@
+2017/02/15
+- released flxutils-0.1.36
+- cleanup: remove old-flxpkg
+- build: remove all remaining references to sstrip
+- doc: remove obsolete README and TODO file
+- init: cleanup obsolete doc comments and update the doc
+- pause: introduce a new simple utility to maintain a live process
+- rules.make: add -fno-ident to stop emission of the .comment section
+- scripts/pcidev: fix issue on list creation parsing same options several times
+- init: implement halt/poweroff/reboot/suspend
+- init: reduce the implementation size of the "ls" command
+- init: implement "ls"
+- rules.make: always add -lgcc after the .c, not in the cflags
+- scripts: remove old versions of pkg
+- init: remove obsolete versions
+- wdd: support nolibc
+- wdd: normalize syscalls
+- wdd: disable sstrip
+- lcd: make it possible to build with nolibc
+- lcd: pass the 3rd argument to open()
+- lcd: cleanup build warnings
+- grub-mbr-default: enable support for nolibc
+- grub-mbr-default: don't send double colon on perror calls
+- grub-mbr-default: normalize syscalls
+- grub-mbr-default: limit dependency on stdio
+- rules.make: automatically build using "nolibc" when NOLIBC is defined
+- init: don't load any includes when NOLIBC is specified
+- init: always fill arguments to variadic syscalls
+- init: implement support for "tar {t,x,xv} archive.tar dir"
+- init: replace a2mode() with base8_to_ul() and base8_to_ul_lim()
+- init: implement recursive mkdir()
+- init: optim: implement streqlen() to compare up to a certain length
+- init: optim: remove the last strlen() calls
+- init: optim: get rid of the last strcmp() calls
+- init: optim: move the union at the top in dev_varstr
+- init: fix bug in "td" where "/" could match any length
+- init: cleanup: properly use absolute paths where relevant
+- init: cleanup: remove all the preset strings
+- init: optim: get rid of isdigit()
+- init: cleanup: rearrange the functions by usage
+- init: cleanup: move all type definitions before variables assignments
+- init: cleanup: move all defines at the top
+- init: cleanup: make print() only a function and move it with other ones
+- init: cleanup: remove useless casts to uid_t and gid_t
+- init: cleanup: remove the useless ATOL macro
+- init: cleanup: remove the last users of STR_SECT
+- init: cleanup: remove the now useless CONST_STR() macro
+- init: cleanup: remove the typedef uchar
+- init: cleanup: move the mode_t before the other fields
+- init: cleanup: the aligned attribute is part of the declaration, not the type
+- init: cleanup: remove a lot of dead code
+- init: properly reindent the code
+- rules.make: add a few options to disable exceptions and to strip unused sections
+- init: add a new command "td" to test for devtmpfs
+- init: change the values of the token conditions
+- init: get rid of the NB_TOKENS macro
+- init: replace strcpy() with my_strcpy()
+- init: reimplement a size-optimized memmove() function
+- init: use only dup2() instead of dup()
+- init: check /dev/null in addition to /dev/console
+- scripts/pcidev: fix issue introduced with last change
+- scripts/pcidev: support modules.alias as well
+- scripts/pcidev: don't try to enumerate devices when there's no bus
+- init: remove "static" in front of two local stack strings
+- init: fix a major bug in interactive mode
+- signfs: fix signedness warnings when calling MD5_Update().
+- mii: disable building of tulip-diag and starfire-diag
+
 2014/10/03
 - released flxutils-0.1.35
 - BUILD: disable old header checking in flx
