@@ -1,7 +1,6 @@
 CC      ?= gcc
 STRIP   ?= strip
 OBJDUMP ?= objdump
-SSTRIP  ?= sstrip
 UCLIBC	?= uclibc
 
 CC_ORIG := $(CC)
@@ -24,7 +23,6 @@ all:	$(OBJS)
 	$(STRIP) -R .eh_frame_hdr -R .eh_frame $@
 	$(OBJDUMP) -h $@ | grep -q '\.data[ ]*00000000' && $(STRIP) -R .data $@ || true
 	$(OBJDUMP) -h $@ | grep -q '\.sbss[ ]*00000000' && $(STRIP) -R .sbss $@ || true
-	#-if [ -n "$(SSTRIP)" ]; then $(SSTRIP) $@ ; fi
 
 %-debug:	%.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -DDEBUG -o $@ $< -lgcc
