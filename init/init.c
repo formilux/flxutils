@@ -1,15 +1,4 @@
 /*
-  WARNING ! THIS CODE IS OPTIMIZED FOR SIZE WITH COMPILED-IN ARGUMENTS. IT IS
-  SUBJECT TO BUFFER OVERFLOWS SO DON'T USE IT WITH RUNTIME ARGUMENTS !!!
-*/
-
-/* TODO : 
-   - make the config buffer bigger
-   - a few security checks (buffer overflows...)
-   - cleanup the code a bit
-*/
-
-/*
   preinit - new try on 2002/04/20 - Willy Tarreau <willy AT meta-x.org>
 
   usage : /sbin/preinit [ \< config_file ] [ { init args | "rebuild" } ]
@@ -34,86 +23,7 @@
 
   If /dev/console is found under /dev, it will not be rebuilt.
 
-  **** needs to rework the doc a bit since it's not up-to-date. ****
-
-  This code tries to build a few filesystem squeleton so that init has enough
-  to work correctly :
-  - mount -t proc /proc /proc
-  - mount -t tmpfs /dev /dev
-  - get information from a file : /.preinit which describes what to mount,
-  what ramdisks, links and dirs to make :
-
-  ln      L source dest
-  make a symlink from <source> to <dest>
-  md      D path [ mode ]
-  create a directory named <path> with the mode <mode>. If mode is left
-  undefined, 0755 is assumed.
-  mt      M blkdev[(major:minor)] path fstype [ { ro | rw } [ flags ] ]
-  if <major:minor> is specified, create a block device <blkdev>
-  with <major> and <minor> and mode 0600.
-  mount <blkdev> under <path> with type <fstype>, read-only, except if
-  rw is specified, and args <flags>.
-  in      I path
-  set the next init program to <path>
-  ex      E cmd [ args ]*
-  execute <cmd> with args <args> and wait for its completion.
-  rx      R dir cmd [ args ]*
-  chroot to <dir>, execute <cmd> with args <args> and wait for its completion.
-  bl      B mode uid gid major minor naming_rule
-  create a set of block devices
-  ch      C mode uid gid major minor naming_rule
-  create a set of char devices
-  fi      F mode uid gid name
-  create a fifo
-  ma      U mode
-  change umask
-  pr      P <new_root> <put_old_relative>
-  pivot root : old root is displaced into new_root/put_old_relative, and
-  new_root is displaced under /.
-  mv      K <old_dir> <new_dir>
-  keep directory <old_dir> after a pivot, then unmount it from old_dir.
-  usefull for /dev, /proc, /var ...
-  um      O <old_dir>
-  umount <old_dir> after a pivot for example.
-  lo      l </dev/loopX> <file>
-  losetup /dev/loopX file.
-  # anything
-  comment.
-
-  The devices naming rules consist in strings mixed with numbering rules delimited with
-  brackets. Each numbering rule has 4 comma-separated fields :
-  - type of this string portion : 'c' for a single char, 'i' for an int, 'I' for an int
-  for which 0 is not printed, 'h' for an hex digit
-  - the range :
-  - chars: any concatenation of character ranges separated with a dash '-': 'a-fk-npq'
-  - ints : either an int or a range composed of 2 ints separated with a dash : '1-16'
-  - hex  : same as int, but with hex digits (case insensitive)
-  - the scale : how much to add to the minor device for each step in the range.
-
-  The commands may be prefixed with a '|' or '&', in which case, they will be
-  executed only if the previous command failed (|) or succeeded (&).
-
-  Each command argument may reference an environment variable and an optional default
-  value. Syntax is similar to the Bourne shell with braces :  ${var} and ${var-default}.
-  The default value will be used if the variable is not set, not if it's empty. An unset
-  variable with no default value will return an empty string.
-
-  The variables are not evaluated within quotes, but quotes can stop before the '$' sign
-  and start again after the brace.
-
-  Example :
-  ln hda3 /dev/disk  => symlinks /dev/disk to hda3
-  md /var/tmp 1777	=> creates a directory /var/tmp with mode 1777
-  mt /dev/hda1 /boot ext2 => attempts to mount /dev/hda1 read-only under /boot.
-  mt /dev/${flash-boot} /boot ${fs-ext2} => attempts to mount /dev/$flash read-only under /boot.
-  |mt /dev/hda1(3:1) /boot ext2 => only if the previous command failed, creates /dev/hda1 with major 3, minor 1 and mounts it under /boot
-  in /sbin/init-std  => the following init will be this /sbin/init-std (31 chars max)
-  ex /sbin/initramdisk /dev/ram6 1200 => executes /sbin/initramdisk with these args and waits for its completion
-  bl 0600 0 0 3 1 hd[c,ab,64][i,1-16,1] => makes all hdaX and hdbX with X ranging from 1 to 16
-  ch 0600 0 5 2 0 pty[c,p-za-f,16][h,0-f,1] => makes all 256 pty*
-  #comment => ignore this line
-
-  For executable reduction reasons, the .preinit file is limited to 4 kB.
+  Please read the README file for detailed information.
 
   The choice of the init program is quite complex, because we want to avoid
   stupid loops and buggy behaviours while conservating quite a parametrable
@@ -151,44 +61,6 @@
 
   Note: basically, each time an environment variable is read, it must be killed afterwards.
   Eg: init2=, INIT=, ...
-
-
-  The root directory should contain the following dirs :
-  - /var (directory) -> can be a ramfs or a real dir on another device
-  - /var/tmp (directory) -> idem
-  - /tmp (directory) -> idem
-  - /etc (directory or symlink) -> several possibilities :
-  - directory on the root fs (preferably)
-  - directory on another fs
-  - ramfs (or ramdisk) and directory extracted from other source
-  - symlink to /boot/etc  (in this case, /boot/etc must be a populated directory)
-  /etc will already have several symlinks
-
-  /boot (mandatory directory) contains the following :
-  - [kernel version] (directory) with vmlinuz, System.map, config and
-  the tree behind /lib/modules/[version]
-  - current (symlink to kernel version)
-  - vmlinuz (symlink to current/vmlinuz)
-  - System.map (symlink to current/System.map)
-  - config (symlink to current/config)
-  - eventually initrd (symlink to current/initrd)
-  - modules.dep (symlink to current/modules.dep)
-  - modules.pcimap (symlink to current/modules.pcimap)
-
-  /boot *may* contain the following :
-  - etc (populated directory)
-  - bootfstab (if /etc and /boot/etc empty or non-existant)
-             
-  This helps in making /lib/modules : it will simply be a symlink to
-  /boot/current which will contain all modules.
-
-
-  wrong for now:
-  /tmp will always be linked to fs/var/tmp.
-  /var will always be linked to fs/var.
-  /fs must contain a description file for it (what to mount where, what to
-  initialize) so that init has a working filesystem hierarchy and fstab works.
-  /fs should be FAT-compatible, at least for its root structure.
 */
 
 #ifndef NOLIBC

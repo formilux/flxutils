@@ -1,99 +1,215 @@
-< extracted from init.c >
+The preinit configuration file supports a compact language making it possible
+to prepare a working rootfs and mount it before init is executed. It is meant
+to be called as the init executable (pid1) and it transfers the execution to
+the original init once done. It supports printing messages, using environment
+variables and default values, testing for variable values and file existence,
+mounting file systems, pivoting roots, and features an interactive mode.
 
-/*
-  preinit - new try on 2002/04/20 - Willy Tarreau <willy AT meta-x.org>
+Spaces and tabs are used as word delimiters, and are ignored at the beginning
+of lines. Single and double quotes can be used to enclose words containing
+spaces or tabs. Empty lines are ignored, as well as anything following a '#'
+character till the end of the line.
 
-  usage : /sbin/preinit [ \< config_file ] [ { init args | "rebuild" } ]
+Most commands are two-character long though some older ones also exist in a
+single character flavour. Most commands take arguments. All of them have a
+minimum number of expected arguments, and extra arguments are silently ignored.
 
-  Note : the "\< config_file" is to be used within configuration files :
-	  #!/sbin/preinit <
-	  ....
-  Thus, when you pass "init=/.preinit", the kernel executes :
-          /sbin/preinit < /.preinit
+The command reference follows, alphabetically sorted by command name, followed
+by the short form if any, and arguments, then a description of what the command
+does on the next line :
 
-  The '<' character has been chosen for its rareness.
+Cmd Short Args + description
+--------------------------------------------------------------------------------
+.         <none>
+          (single dot). End evaluation in interactive mode and return back to
+          the calling point, generally the config file.
+--------------------------------------------------------------------------------
+bi    K   <src> <dst>
+          Bind mounting point of directory <src> to <dst> (mount --bind).
+--------------------------------------------------------------------------------
+bl    B   <mode> <uid> <gid> <major> <minor> <naming_rule>
+          Create block devices, see below for the rules.
+--------------------------------------------------------------------------------
+br        <cmd> [<args>]
+          Branch to program <cmd> with args without forking (execve).
+--------------------------------------------------------------------------------
+ca        <path>
+          Cat: display contents of file <path>.
+--------------------------------------------------------------------------------
+cd        <dir>
+          Change current directory to <dir>.
+--------------------------------------------------------------------------------
+ch    C   <mode> <uid> <gid> <major> <minor> <naming_rule>
+          Create character devices, see below for the rules.
+--------------------------------------------------------------------------------
+cp        <src> <dst>
+          Copy contents of file <src> to file <dst> (which may exist).
+--------------------------------------------------------------------------------
+cr        <dir>
+          Change root to dir <dir> without changing the current directory.
+--------------------------------------------------------------------------------
+ec        [<string>]
+          Echo: print the string to the standard output.
+--------------------------------------------------------------------------------
+eq        <str1> <str2>
+          Compare if string <str1> is equal to string <str2>, return OK if so.
+--------------------------------------------------------------------------------
+ex    E   <cmd> [<args>]
+          Execute program <cmd> with args, forking. Status sets error flag.
+--------------------------------------------------------------------------------
+fi    F   <mode> <uid> <gid> <name>
+          Create a fifo <name> owned by <uid>/<gid> with permissions <mode>.
+--------------------------------------------------------------------------------
+ha        <none>
+          Halt the system.
+--------------------------------------------------------------------------------
+in    I   <path>
+          Sets the path to the init program to transfer the control to after
+          the end of the configuration file is reached. The program will be
+          called with the exact same arguments as the first init. When running
+          in interactive mode, setting this ends the interactive mode so that
+          the execution continues. By default the init program is
+          "/sbin/init-sysv". If an "INIT=<path>" statement is found on the boot
+          command line (/proc/cmdline), this path will be used instead. If the
+          init program cannot be executed, the program will exit in error,
+          likely causing a kernel panic.
+--------------------------------------------------------------------------------
+ln    L   <src> <dst>
+          create a symlink from <src> to <dst>.
+--------------------------------------------------------------------------------
+lo    l   <loopdev> <file>
+          Set up loop device loopdev from file <file>.
+--------------------------------------------------------------------------------
+ls        [-l|-e] <dir>
+          List contents of directory <dir>. Prefix with file type when using
+          "-l". Only check if something exists when using "-e", returning OK if
+          something is found, NOK otherwise.
+--------------------------------------------------------------------------------
+ma    U   <mask>
+          Change program's umask to <mask> (octal)
+--------------------------------------------------------------------------------
+md    D   <path> [<mode>]
+          create a directory <path> with mode <mode>, or 0755 if unspecified.
+--------------------------------------------------------------------------------
+mt    M   <dev[\[major:minor\]]> <mnt> <type> [ro|rw] [<opts>]
+          mount <dev> on <mnt> using file system type <type> and options <opts>.
+          The mount may be force read-only using "ro" or read-write using "rw",
+          though read-only is used by default. If [major:minor] are specified
+          (including the square brackets), then the device is created with these
+          elements and permissions mode 0600.
+--------------------------------------------------------------------------------
+mv    K   <src> <dst>
+          Move mounting point of directory <src> to <dst> (mount --move).
+--------------------------------------------------------------------------------
+po        <none>
+          Power off.
+--------------------------------------------------------------------------------
+pr    P   <new_root> <old_root>
+          Pivot root to <new_root> and move the old one to <old_root> inside.
+--------------------------------------------------------------------------------
+rb        <none>
+          Reboot.
+--------------------------------------------------------------------------------
+rd        [<string>]
+          Print the string and read commands from the console, use '.' to end.
+--------------------------------------------------------------------------------
+re        <dev> <mnt> <type> [ro|rw] [<opts>]
+          Remount. Same options as mount but <dev> is ignored.
+--------------------------------------------------------------------------------
+rm        <file>...
+          Remove file(s) <file>.
+--------------------------------------------------------------------------------
+rx    R   <dir> <cmd> [<args>]
+          Same as "ex" but chroots to <dir> first.
+--------------------------------------------------------------------------------
+sp        <none>
+          Suspend (may not always be supported).
+--------------------------------------------------------------------------------
+st        <file>
+          Stat: test for existence of <file>, return OK if it exists.
+--------------------------------------------------------------------------------
+sw        <new_root>
+          Switch root and reopen console from new root if it exists.
+--------------------------------------------------------------------------------
+ta        t|x|xv <file> <dir>
+          Tar test/extract/verbose_extract <file> to <dir>. Return OK on
+          success.
+--------------------------------------------------------------------------------
+td        <none>
+          Test if /dev is a mounted devtmpfs, returns OK or NOK.
+--------------------------------------------------------------------------------
+te        <var>=<value>
+          Test if environment variable <var> equals value <value>.
+--------------------------------------------------------------------------------
+um    O   <dir>
+          Unmount directory <dir>.
+--------------------------------------------------------------------------------
+wk        <string> <delay>
+          Print <string> and wait up to <delay> seconds for a key. Return OK if
+          a key is pressed withing the delay, otherwise NOK.
+--------------------------------------------------------------------------------
+{         <none>
+          Start a block of sequential commands. Useful to group many of them as
+          the result of a condition. Up to 10 levels may be embedded. When in
+          interactive mode, the prompt changes to display as many ">" characters
+          as the current level.
+--------------------------------------------------------------------------------
+}         <none>
+          Close a block of sequential commands and return the status of the last
+          command in the block.
+--------------------------------------------------------------------------------
 
-  the "rebuild" argument make the tool only rebuild a complete /dev
-  tree from the informations contained in the .preinit file, and then
-  exit. It does this even if the pid is not 1, but doesn't execute nor 
-  mount anything. Only mkdir, links, blocks, chars and fifo devices are
-  created. Very useful before a lilo :
+Any command above may be prefixed with one of the following modifiers :
+  - '|' : the command will only be executed if the previous command failed
+  - '&' : the command will only be executed if the previous command succeeded
+  - '!' : the resulting status of the command will be reversed
 
-  # chroot /mnt/disk /.preinit rebuild
-  # lilo -r /mnt/disk
-  # umount /mnt/disk/dev
+Environment variables can be passed on the kernel command line by passing
+statements of the form "var=value". Each command argument may reference an
+environment variable and an optional default value. Syntax is similar to the
+Bourne shell with braces :  ${var} and ${var-default}. The default value will
+be used if the variable is not set, not if it's empty. An unset variable with
+no default value will return an empty string. The variables are not evaluated
+within quotes, but quotes can stop before the '$' sign and start again after
+the brace without breaking the word.
 
-  If /dev/console is found under /dev, it will not be rebuilt.
+The devices naming rules consist in strings mixed with numbering rules delimited
+with brackets. Each numbering rule has 4 comma-delimited fields :
+  - type of this string portion :
+    - 'c' for a single char
+    - 'i' for an int
+    - 'I' for an int for which 0 is not printed (useful for partitions)
+    - 'h' for an hex digit (useful for ttys)
 
-  **** needs to rework the doc a bit since it's not up-to-date. ****
+  - the range :
+      - chars: any concatenation of character ranges separated with a dash '-',
+        such as for example "a-fk-npq" ;
 
-  This code tries to build a few filesystem squeleton so that init has enough
-  to work correctly :
-    - mount -t proc /proc /proc
-    - mount -t tmpfs /dev /dev
-    - get information from a file : /.preinit which describes what to mount,
-      what ramdisks, links and dirs to make :
+      - ints : either an int or a range composed of 2 ints separated with a
+        dash, such as for example "1-16"
 
-ln      L source dest
-      	make a symlink from <source> to <dest>
-md      D path [ mode ]
-      	create a directory named <path> with the mode <mode>. If mode is left
-	undefined, 0755 is assumed.
-mt      M blkdev[(major:minor)] path fstype [ { ro | rw } [ flags ] ]
-      	if <major:minor> is specified, create a block device <blkdev>
-	with <major> and <minor> and mode 0600.
-	mount <blkdev> under <path> with type <fstype>, read-only, except if
-	rw is specified, and args <flags>.
-in      I path
-      	set the next init program to <path>
-ex      E cmd [ args ]*
-      	execute <cmd> with args <args> and wait for its completion.
-rx      R dir cmd [ args ]*
-      	chroot to <dir>, execute <cmd> with args <args> and wait for its completion.
-bl      B mode uid gid major minor naming_rule
-        create a set of block devices
-ch      C mode uid gid major minor naming_rule
-        create a set of char devices
-fi      F mode uid gid name
-	create a fifo
-ma      U mode
-	change umask
-pr      P <new_root> <put_old_relative>
-        pivot root : old root is displaced into new_root/put_old_relative, and
-	new_root is displaced under /.
-mv      K <old_dir> <new_dir>
-        keep directory <old_dir> after a pivot, then unmount it from old_dir.
-	usefull for /dev, /proc, /var ...
-um      O <old_dir>
-        umount <old_dir> after a pivot for example.
-lo      l </dev/loopX> <file>
-	losetup /dev/loopX file.
-      # anything
-      	comment.
+      - hex  : same as int, but with hex digits (case insensitive)
 
-    The devices naming rules consist in strings mixed with numbering rules delimited with
-    brackets. Each numbering rule has 4 comma-separated fields :
-      - type of this string portion : 'c' for a single char, 'i' for an int, 'I' for an int
-        for which 0 is not printed, 'h' for an hex digit
-      - the range : 
-          - chars: any concatenation of character ranges separated with a dash '-': 'a-fk-npq'
-	  - ints : either an int or a range composed of 2 ints separated with a dash : '1-16'
-	  - hex  : same as int, but with hex digits (case insensitive)
-      - the scale : how much to add to the minor device for each step in the range.
+  - the scale : how much to add to the minor device for each step in the range.
 
-    The commands may be prefixed with a '|' or '&', in which case, they will be
-    executed only if the previous command failed (|) or succeeded (&).
+The configuration file is limited to 16kB in length, though it may be changed
+using a config macro in the source code.
 
-    Example :
-      ln hda3 /dev/disk  => symlinks /dev/disk to hda3
-      md /var/tmp 1777	=> creates a directory /var/tmp with mode 1777
-      mt /dev/hda1 /boot ext2 => attempts to mount /dev/hda1 read-only under /boot.
-      |mt /dev/hda1(3:1) /boot ext2 => only if the previous command failed, creates /dev/hda1 with major 3, minor 1 and mounts it under /boot
-      in /sbin/init-std  => the following init will be this /sbin/init-std (31 chars max)
-      ex /sbin/initramdisk /dev/ram6 1200 => executes /sbin/initramdisk with these args and waits for its completion
-      bl 0600 0 0 3 1 hd[c,ab,64][i,1-16,1] => makes all hdaX and hdbX with X ranging from 1 to 16
-      ch 0600 0 5 2 0 pty[c,p-za-f,16][h,0-f,1] => makes all 256 pty*
-      #comment => ignore this line
+Example of configuration file :
 
-  For executable reduction reasons, the .preinit file is limited to 4 kB.
-*/
+  td                            # test if /dev is of type devtmpfs
+  |{                            # if not, execute the following commands
+  ln hda3 /dev/disk             # symlinks /dev/disk to hda3
+  md /var/tmp 1777              # creates a directory /var/tmp with mode 1777
+  mt /dev/hda1 /boot ext2       # attempts to mount /dev/hda1 read-only under /boot.
+  |mt /dev/hda1(3:1) /boot ext2 # only if the previous command failed, creates
+                                # /dev/hda1 with major 3, minor 1 and mounts
+                                # it read-only under /boot
+  ex /sbin/ird /dev/ram6 1200   # executes /sbin/ird with these args and waits
+                                # for its completion
+  bl 0600 0 0 3 1 hd[c,ab,64][i,1-16,1]     # makes all hdaX and hdbX with X
+                                            # ranging from 1 to 16
+  ch 0600 0 5 2 0 pty[c,p-za-f,16][h,0-f,1] # makes all 256 pty*
+  #comment => ignore this line
+  }                             # end of the conditional commands
+  in /sbin/init-std             # the following init will be this /sbin/init-std
