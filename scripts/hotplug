@@ -11,14 +11,17 @@ if [ "$1" = "firmware" ]; then
   [ -s "/etc/firmware/$FIRMWARE" ] && file="/etc/firmware/$FIRMWARE"
   [ -s "/tmp/$FIRMWARE" ] && file="/tmp/$FIRMWARE"
   if [ -s "$file" ]; then
-    echo 1 >/sys/$DEVPATH/loading
-    cat $file >/sys/$DEVPATH/data
-    echo 0 >/sys/$DEVPATH/loading
+    echo 1    > "/sys/$DEVPATH/loading"
+    cat $file > "/sys/$DEVPATH/data"
+    echo 0    > "/sys/$DEVPATH/loading"
   else
     exit 1
   fi
 else
-  echo -1 >/sys/$DEVPATH/loading
+  # end of firmware loading in case it was in progress
+  if [ -e "/sys/$DEVPATH/loading" ]; then
+    echo -1 >"/sys/$DEVPATH/loading"
+  fi
 fi
 exit 0
 
