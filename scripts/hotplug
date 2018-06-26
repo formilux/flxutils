@@ -2,6 +2,24 @@
 
 # to be installed as /sbin/hotplug
 
+# remove broken links to devices we've added ourselves. They have to match
+# "$1" and link to "$DEVNAME".
+rmlink() {
+  if [ "$ACTION" = remove -a -n "$DEVNAME" -a -n "$1" ]; then
+    dir=""
+    if [ -z "${1##*/*}" ]; then
+      dir="${1%/*}"; set -- "${1##*/}"
+    fi
+    for i in $(find "/dev/$dir" -name "$1" -xtype l -print 2>/dev/null); do
+      link=$(readlink "$i" 2>/dev/null)
+      link="${link##*/}"
+      if [ "$link" = "$DEVNAME" ]; then
+        rm -f "$i"
+      fi
+    done
+  fi
+}
+
 if [ "$1" = "firmware" ]; then
   if [ "$(cat /sys/class/firmware/timeout 2>/dev/null)" = "60" ]; then
     echo 1 > /sys/class/firmware/timeout
@@ -21,6 +39,59 @@ else
   # end of firmware loading in case it was in progress
   if [ -e "/sys/$DEVPATH/loading" ]; then
     echo -1 >"/sys/$DEVPATH/loading"
+  fi
+
+  # try to figure vendor/product/serial and a matching script in /etc/hotplug.d
+  # for this we go up in the devpath until we find vendor, product and serial,
+  # or the top, then call the scripts hoping to get an alias back. There's no
+  # vendor/product/serial for removal.
+  if [ -n "$DEVNAME" -a -n "$DEVPATH" ]; then
+    HP_VENDOR=""
+    HP_PRODUCT=""
+    HP_SERIAL=""
+    if [ "$ACTION" = "add" ]; then
+      name="/sys$DEVPATH"
+      while [ -n "$name" -a -z "${name%%/*}" ]; do
+        if [ -z "$HP_VENDOR" -a -e "$name/idVendor" ]; then
+          HP_VENDOR="$(cat $name/idVendor 2>/dev/null)";
+        fi
+        if [ -z "$HP_PRODUCT" -a -e "$name/idProduct" ]; then
+          HP_PRODUCT="$(cat $name/idProduct 2>/dev/null)";
+        fi
+        if [ -z "$HP_SERIAL" -a -e "$name/serial" ]; then
+          HP_SERIAL="$(cat $name/serial 2>/dev/null)";
+        fi
+        if [ -n "$HP_VENDOR" -a -n "$HP_PRODUCT" -a -n "$HP_SERIAL" ]; then
+          break;
+        fi
+        name=${name%/*}
+      done
+
+      for i in /etc/hotplug.d/*.sh; do
+        if [ -x "$i" ]; then
+          export HP_VENDOR HP_PRODUCT HP_SERIAL
+          name="$("$i" "$ACTION" 2>/dev/null)"
+          if [ -n "$name" ]; then
+            name="${name#/dev}"
+            if [ -z "${name##*/*}" ]; then
+              mkdir -p "/dev/${name%/*}"
+              ln -sf "/dev/$DEVNAME" "/dev/$name"
+            else
+              ln -sf "$DEVNAME" "/dev/$name"
+            fi
+          fi
+        fi
+      done
+    elif [ "$ACTION" = "remove" ]; then
+      for i in /etc/hotplug.d/*.sh; do
+        if [ -x "$i" ]; then
+          name="$("$i" "$ACTION" 2>/dev/null)"
+          if [ -n "$name" ]; then
+            rmlink "$name"
+          fi
+        fi
+      done
+    fi
   fi
 fi
 exit 0
