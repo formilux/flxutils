@@ -332,7 +332,7 @@ static char tmp_path[MAXPATHLEN];
 
 
 /* Used only to emit debugging messages when compiled with -DDEBUG */
-static void print(char *c)
+static void debug(char *c)
 {
 #ifdef DEBUG
 	char *p = c;
@@ -681,12 +681,12 @@ static int mknod_chown(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t
 
 	if (mknod(name, mode, makedev(major, minor)) == -1 && chmod(name, mode) == -1) {
 		error = 1;
-		print("init/error : mknod("); print(name); print(") failed\n");
+		debug("init/error : mknod("); debug(name); debug(") failed\n");
 	}
 
 	if (chown(name, uid, gid) == -1) {
 		error = 1;
-		print("init/error : chown("); print(name); print(") failed\n");
+		debug("init/error : chown("); debug(name); debug(") failed\n");
 	}
 
 	return error;
@@ -745,7 +745,7 @@ static void reopen_console()
 	dup2(0, 1); // stdout
 	dup2(0, 2); // stderr
 
-	print("init/info : reopened /dev/console\n");
+	debug("init/info : reopened /dev/console\n");
 }
 
 /* return 0 if at least one entry is missing */
@@ -1463,7 +1463,7 @@ static void name_and_minor(char *name, uint8_t *minor, int fields)
 		case 0 :
 			break;
 		default:
-			print("init/conf : field type must be c, h, i or I\n");
+			debug("init/conf : field type must be c, h, i or I\n");
 		}
 	}
 	if (minor)
@@ -1566,7 +1566,7 @@ static void multidev(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t m
 		}
 	}
 	else {
-		print("var string incomplete\n");
+		debug("var string incomplete\n");
 	}
 
 	/* now we must "compile" the variable fields */
@@ -1584,7 +1584,7 @@ static void multidev(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t m
 			break;
 		case 'h':
 			if (hex_range(var[i].u.chr.set, &var[i].u.num.low, &var[i].u.num.high)) {
-				print("init/conf : error in hex range\n");
+				debug("init/conf : error in hex range\n");
 				continue;
 			}
 			var[i].u.num.value = var[i].u.num.low;
@@ -1592,7 +1592,7 @@ static void multidev(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t m
 		case 'i':
 		case 'I':
 			if (int_range(var[i].u.chr.set, &var[i].u.num.low, &var[i].u.num.high)) {
-				print("init/conf : error in int range\n");
+				debug("init/conf : error in int range\n");
 				continue;
 			}
 			var[i].u.num.value = var[i].u.num.low;
@@ -1706,23 +1706,23 @@ int main(int argc, char **argv, char **envp)
 		 * we don't test the presence of /dev/console.
 		 */
 		if (linuxrc || !is_dev_populated()) {
-			print("init/info: /dev/console not found, rebuilding /dev.\n");
+			debug("init/info: /dev/console not found, rebuilding /dev.\n");
 			if (mount("/dev", "/dev", "devtmpfs", MS_MGC_VAL, "size=4k,nr_inodes=4096,mode=755") == -1 &&
 			    mount("/dev", "/dev", "tmpfs",    MS_MGC_VAL, "size=4k,nr_inodes=4096,mode=755") == -1) {
-				print("init/err: cannot mount /dev.\n");
+				debug("init/err: cannot mount /dev.\n");
 			}
 			else {
 				int i;
 				if (chdir("/dev") == -1)
-					print("init/error : cannot chdir(/dev)\n");
+					debug("init/error : cannot chdir(/dev)\n");
 
-				print("init/info: /dev has been mounted.\n");
+				debug("init/info: /dev has been mounted.\n");
 				for (i = 0; i < sizeof(dev_nodes) / sizeof(dev_nodes[0]); i++) {
 					mknod_chown(dev_nodes[i].mode, UID_ROOT, dev_nodes[i].gid,
 						    dev_nodes[i].major, dev_nodes[i].minor, (char *)dev_nodes[i].name);
 				}
 				symlink("/proc/self/fd", "fd");
-				print("init/info: /dev has been rebuilt.\n");
+				debug("init/info: /dev has been rebuilt.\n");
 
 				chdir("/");
 				/* if /dev was empty, we may not have had /dev/console, so the
@@ -1738,21 +1738,21 @@ int main(int argc, char **argv, char **envp)
 		/* if /dev/root is non-existent, we'll try to make it now */
 
 		if (stat("/dev/root", &statf) == -1) {
-			print("init/info : /dev/root does not exist. Rebuilding...\n");
+			debug("init/info : /dev/root does not exist. Rebuilding...\n");
 			if (stat("/", &statf) == 0) {
 				if (mknod("/dev/root", 0600 | S_IFBLK, statf.st_dev) == -1) {
-					print("init/error : mknod(/dev/root) failed\n");
+					debug("init/error : mknod(/dev/root) failed\n");
 				}
 			}
 			else {
-				print("init/error : cannot stat(/)\n");
+				debug("init/error : cannot stat(/)\n");
 			}
 		}
 	}
 
 	/* here, the cwd is still "/" */
 	if (cfg_ok) {
-		print("ready to parse file : "); print(cfg_file); print("\n");
+		debug("ready to parse file : "); debug(cfg_file); debug("\n");
 
 		run_level = brace_level = 0;
 		context[brace_level].error = 0;
@@ -1837,10 +1837,10 @@ int main(int argc, char **argv, char **envp)
 
 			if (token == TOK_CB) { /* closing brace */
 				if (cond & TOK_COND) {
-					print("Conditions not permitted with a closing brace.\n");
+					debug("Conditions not permitted with a closing brace.\n");
 					/* we close the brace anyway, ignoring the condition. */
 				} else if (brace_level == 0) {
-					print("Too many closing braces.\n");
+					debug("Too many closing braces.\n");
 					error = context[brace_level].error;
 					continue;
 				}
@@ -1855,7 +1855,7 @@ int main(int argc, char **argv, char **envp)
 			}
 			else if (token == TOK_OB) { /* opening brace */
 				if (brace_level == MAX_BRACE_LEVEL - 1) {
-					print("Too many brace levels.\n");
+					debug("Too many brace levels.\n");
 					error = context[brace_level].error;
 					break;
 				}
@@ -1907,7 +1907,7 @@ int main(int argc, char **argv, char **envp)
 				 * shell, this one might be called with 'auto'...
 				 * So we flush them all.
 				 */
-				print("<I>nit : used config name for init\n");
+				debug("<I>nit : used config name for init\n");
 
 				/* in keyboard mode, specifying init stops any further parsing,
 				 * so that the rest of the config file can be skipped.
@@ -1952,7 +1952,7 @@ int main(int argc, char **argv, char **envp)
 
 			/* other options are reserved for pid 1/linuxrc/rebuild and prompt mode */
 			if (!pid1 && !linuxrc && !rebuild && cmd_input != INPUT_KBD) {
-				print("Command ignored since pid not 1\n");
+				debug("Command ignored since pid not 1\n");
 				error = context[brace_level].error;
 				continue;
 
@@ -1996,14 +1996,14 @@ int main(int argc, char **argv, char **envp)
 				/* md path [ mode ] :  make a directory */
 				if (recursive_mkdir(cfg_args[1], (cfg_args[2] == NULL) ? 0755 : base8_to_ul(cfg_args[2])) == -1) {
 					error = 1;
-					print("<D>irectory : mkdir() failed\n");
+					debug("<D>irectory : mkdir() failed\n");
 				}
 				goto finish_cmd;
 			case TOK_LN:
 				/* ln from to : make a symlink */
 				if (symlink(cfg_args[1], cfg_args[2]) == -1) {
 					error = 1;
-					print("<S>ymlink : symlink() failed\n");
+					debug("<S>ymlink : symlink() failed\n");
 				}
 				goto finish_cmd;
 			case TOK_CA:
@@ -2069,7 +2069,7 @@ int main(int argc, char **argv, char **envp)
 				while (cfg_args[arg]) {
 					if (unlink(cfg_args[arg]) == -1) {
 						error = 1;
-						print("Unlink : unlink() failed\n");
+						debug("Unlink : unlink() failed\n");
 					}
 					arg++;
 				}
@@ -2080,7 +2080,7 @@ int main(int argc, char **argv, char **envp)
 			case TOK_CH:
 				/* ch <mode> <uid> <gid> <major> <minor> <naming rule> : build a character device */
 				if (chdir("/dev") == -1) {
-					print("<B>lock_dev/<C>har_dev : cannot chdir(/dev)\n");
+					debug("<B>lock_dev/<C>har_dev : cannot chdir(/dev)\n");
 					error = 1;
 					goto finish_cmd;
 				}
@@ -2093,7 +2093,7 @@ int main(int argc, char **argv, char **envp)
 			case TOK_FI:
 				/* F <mode> <uid> <gid> <name> : build a fifo */
 				if (chdir("/dev") == -1) {
-					print("<F>ifo : cannot chdir(/dev)\n");
+					debug("<F>ifo : cannot chdir(/dev)\n");
 					error = 1;
 					goto finish_cmd;
 				}
@@ -2107,7 +2107,7 @@ int main(int argc, char **argv, char **envp)
 
 			/* other options are reserved for pid 1/linuxrc/prompt mode only */
 			if (!pid1 && !linuxrc && cmd_input != INPUT_KBD) {
-				print("Command ignored since pid not 1\n");
+				debug("Command ignored since pid not 1\n");
 				error = context[brace_level].error;
 				continue;
 			}
@@ -2156,17 +2156,17 @@ int main(int argc, char **argv, char **envp)
 					dev = makedev(imaj, imin);
 					if (mknod(mntdev, S_IFBLK|0600, dev) == -1) { /* makes the node as required */
 						error = 1;
-						print("<M>ount : mknod() failed\n");
+						debug("<M>ount : mknod() failed\n");
 					}
 				}
 		
 				mntarg = MS_RDONLY;
 				if (cfg_args[4] != NULL && streq(cfg_args[4], "rw")) {
-					print("<M>ount : 'rw' flag found, mounting read/write\n");
+					debug("<M>ount : 'rw' flag found, mounting read/write\n");
 					mntarg &= ~MS_RDONLY;
 				}
 				else {
-					print("<M>ount : 'rw' flag not found, mounting read only\n");
+					debug("<M>ount : 'rw' flag not found, mounting read only\n");
 				}
 
 				if (token == TOK_RE)
@@ -2174,7 +2174,7 @@ int main(int argc, char **argv, char **envp)
 
 				if (mount(mntdev, cfg_args[2], cfg_args[3], MS_MGC_VAL | mntarg, cfg_args[5]) == -1) {
 					error = 1;
-					print("<M>ount : error during mount()\n");
+					debug("<M>ount : error during mount()\n");
 				}
 
 				break;
@@ -2225,7 +2225,7 @@ int main(int argc, char **argv, char **envp)
 						tcsetpgrp(0, getpid());
 						setpgid(0, getpid());
 						execve(exec_args[0], exec_args, envp);
-						print("<E>xec(child) : execve() failed\n");
+						debug("<E>xec(child) : execve() failed\n");
 						if (token != TOK_BR)
 							exit(1);
 					}
@@ -2258,15 +2258,15 @@ int main(int argc, char **argv, char **envp)
 				else if (res > 0) {
 					int ret;
 
-					print("<E>xec(parent) : waiting for termination\n");
+					debug("<E>xec(parent) : waiting for termination\n");
 					while (((ret = wait(&error)) != -1) && (ret != res))
-						print("<E>xec(parent) : signal received\n");
+						debug("<E>xec(parent) : signal received\n");
 		    
 					error = (ret == -1) || ((WIFEXITED(error) > 0) ? WEXITSTATUS(error) : 1);
-					print("<E>xec(parent) : child exited\n");
+					debug("<E>xec(parent) : child exited\n");
 				}
 				else {
-					print("<E>xec : fork() failed\n");
+					debug("<E>xec : fork() failed\n");
 					error = 1;
 				}
 				break;
@@ -2279,25 +2279,25 @@ int main(int argc, char **argv, char **envp)
 				/* cd <new_dir> : change current directory */
 				if (chdir(cfg_args[1]) == -1) {
 					error = 1;
-					print("cd : error during chdir()\n");
+					debug("cd : error during chdir()\n");
 				}
 				break;
 			case TOK_CR:
 				/* cr <new_root> : change root without chdir */
 				if (chroot(cfg_args[1]) == -1) {
 					error = 1;
-					print("cr (chroot) : error during chroot()\n");
+					debug("cr (chroot) : error during chroot()\n");
 				}
 				break;
 			case TOK_SW:
 				/* sw <new_root> : switch root + reopen console from new root if it exists */
 				if (chroot(cfg_args[1]) == -1) {
 					error = 1;
-					print("cr (chroot) : error during chroot()\n");
+					debug("cr (chroot) : error during chroot()\n");
 				}
 				if (chdir("/") == -1) {
 					error = 1;
-					print("cd : error during chdir()\n");
+					debug("cd : error during chdir()\n");
 				}
 				/* replace stdin/stdout/stderr with newer ones */
 				reopen_console();
@@ -2306,18 +2306,18 @@ int main(int argc, char **argv, char **envp)
 				/* P <new_root> <put_old_relative> : pivot root */
 				if (chdir(cfg_args[1]) == -1) {
 					error = 1;
-					print("<P>ivot : error during chdir(new root)\n");
+					debug("<P>ivot : error during chdir(new root)\n");
 				}
 
 				if (pivot_root(".", cfg_args[2]) == -1) {
 					error = 1;
-					print("<P>ivot : error during pivot_root()\n");
+					debug("<P>ivot : error during pivot_root()\n");
 				}
 
 				chroot(".");
 				if (chdir("/") == -1) {
 					error = 1;
-					print("<P>ivot : error during chdir(/)\n");
+					debug("<P>ivot : error during chdir(/)\n");
 				}
 
 				/* replace stdin/stdout/stderr with newer ones */
@@ -2337,7 +2337,7 @@ int main(int argc, char **argv, char **envp)
 				 */
 				if (mount(cfg_args[1], cfg_args[2], cfg_args[1], MS_MGC_VAL | MS_BIND, NULL) == -1) {
 					error = 1;
-					print("<bi> : error during mount|bind\n");
+					debug("<bi> : error during mount|bind\n");
 				}
 				if (token == TOK_BI)
 					break;
@@ -2346,7 +2346,7 @@ int main(int argc, char **argv, char **envp)
 				/* um <old_dir> : umount <old_dir> after a pivot. */
 				if (umount2(cfg_args[1], MNT_DETACH) == -1) {
 					error = 1;
-					print("<um> : error during umount\n");
+					debug("<um> : error during umount\n");
 				}
 				break;
 			case TOK_LO: {
@@ -2356,25 +2356,25 @@ int main(int argc, char **argv, char **envp)
 
 				if ((lfd = open(cfg_args[1], O_RDONLY, 0)) < 0) {
 					error = 1;
-					print("(l)osetup : error opening loop device\n");
+					debug("(l)osetup : error opening loop device\n");
 					break;
 				}
 				if ((ffd = open(cfg_args[2], O_RDONLY, 0)) < 0) {
 					error = 1;
-					print("(l)osetup : error opening image\n");
+					debug("(l)osetup : error opening image\n");
 					goto losetup_close_all;
 				}
 				memset(&loopinfo, 0, sizeof (loopinfo));
 				my_strlcpy(loopinfo.lo_name, cfg_args[2], LO_NAME_SIZE);
 				if (ioctl(lfd, LOOP_SET_FD, (void *)(long)ffd) < 0) {
 					error = 1;
-					print("(l)osetup : error during LOOP_SET_FD\n");
+					debug("(l)osetup : error during LOOP_SET_FD\n");
 					goto losetup_close_all;
 				}
 				if (ioctl(lfd, LOOP_SET_STATUS, &loopinfo) < 0) {
 					error = 1;
 					ioctl(lfd, LOOP_CLR_FD, (void *)0);
-					print("(l)osetup : error during LOOP_SET_STATUS\n");
+					debug("(l)osetup : error during LOOP_SET_STATUS\n");
 					goto losetup_close_all;
 				}
 				losetup_close_all:
@@ -2397,7 +2397,7 @@ int main(int argc, char **argv, char **envp)
 				break;
 			}
 			default:
-				print("unknown cmd in /.preinit\n");
+				debug("unknown cmd in /.preinit\n");
 				break;
 			}
 		finish_cmd:
@@ -2405,39 +2405,39 @@ int main(int argc, char **argv, char **envp)
 				error = !error;
 		} /* while (1) */
 	} else if (pid1 && !linuxrc) {
-		print("init/info : error while opening configuration file : ");
-		print(cfg_file); print("\n");
+		debug("init/info : error while opening configuration file : ");
+		debug(cfg_file); debug("\n");
 
 		/* /.preinit was not found. In this case, we take default actions :
 		 *   - mount /proc
 		 *   - mount /var as tmpfs if it's empty and /tmp is a symlink
 		 */
 		if (mount("/proc", "/proc", "proc", MS_MGC_VAL, NULL) == -1)
-			print("init/err: cannot mount /proc.\n");
+			debug("init/err: cannot mount /proc.\n");
 		else
-			print("init/info: /proc mounted RW.\n");
+			debug("init/info: /proc mounted RW.\n");
 
 		/* we'll see if we want to build /var */
 		if ((stat("/var/tmp", &statf) == -1) && /* no /var/tmp */
 		    (stat("/tmp", &statf) == 0) && S_ISLNK(statf.st_mode)) { /* and /tmp is a symlink */
-			print("init/info: building /var.\n");
+			debug("init/info: building /var.\n");
 			if (mount("/var", "/var", "tmpfs", MS_MGC_VAL, NULL) == -1)
-				print("init/err: cannot mount /var.\n");
+				debug("init/err: cannot mount /var.\n");
 			else {
-				print("init/info: /var has been mounted.\n");
+				debug("init/info: /var has been mounted.\n");
 				recursive_mkdir("/var/tmp", 01777);
 				recursive_mkdir("/var/run",  0755);
-				print("init/info: /var has been built.\n");
+				debug("init/info: /var has been built.\n");
 			}
 		}
 	}
 	else {
-		print("init/info : error while opening configuration file : ");
-		print(cfg_file); print("\n");
+		debug("init/info : error while opening configuration file : ");
+		debug(cfg_file); debug("\n");
 	}
 
 	if (rebuild) {
-		print("end of rebuild\n");
+		debug("end of rebuild\n");
 		/* nothing more to do */
 		return 0;
 	}
@@ -2476,7 +2476,7 @@ int main(int argc, char **argv, char **envp)
 	/* the old linuxrc behaviour doesn't exec on exit. */
 	if (*argv != NULL) {
 		err = execve(*argv, argv, envp);
-		print("init/error : last execve() failed\n");
+		debug("init/error : last execve() failed\n");
 
 		/* we'll get a panic there, so let some time for the user to read messages */
 		if (pid1)
