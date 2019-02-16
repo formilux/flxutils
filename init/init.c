@@ -191,43 +191,43 @@ enum {
 
 /* all supported configuration language tokens */
 enum {
-	TOK_LN = 0,            /* ln : make a symlink */
-	TOK_MD,                /* md : mkdir */
-	TOK_MT,                /* mt : mount */
-	TOK_RE,                /* re : remount */
-	TOK_IN,                /* in : set init program */
-	TOK_BR,                /* br : branch (=execute without forking) */
-	TOK_EX,                /* ex : execute */
-	TOK_RX,                /* rx : execute under chroot */
+	TOK_BI,                /* bi : bind a directory */
 	TOK_BL,                /* bl : make block devices */
-	TOK_CH,                /* ch : make char devices */
-	TOK_FI,                /* fi : make a fifo */
-	TOK_MA,                /* ma : set umask */
+	TOK_BR,                /* br : branch (=execute without forking) */
 	TOK_CA,                /* ca : cat file */
 	TOK_CD,                /* cd : chdir */
+	TOK_CH,                /* ch : make char devices */
 	TOK_CP,                /* cp : copy file */
 	TOK_CR,                /* cr : chroot (without chdir) */
-	TOK_SW,                /* sw : switch root = chdir + chroot . + reopen console */
-	TOK_PR,                /* pr : pivot root */
-	TOK_MV,                /* mv : move a filesystem */
-	TOK_BI,                /* bi : bind a directory */
-	TOK_UM,                /* um : umount a filesystem */
-	TOK_LO,                /* lo : losetup */
 	TOK_EC,                /* ec : echo */
 	TOK_EQ,                /* eq : compare two strings */
-	TOK_TE,                /* te : test an environment variable */
-	TOK_RD,                /* rd : read a command from the console */
-	TOK_RM,                /* rm : remove files */
-	TOK_ST,                /* st : stat file existence */
-	TOK_WK,                /* wk : wait key */
-	TOK_TD,                /* td : test /dev for devtmpfs support */
-	TOK_TA,                /* ta : tar "t"/"x"/"xv" archive $2 to dir #3 */
-	TOK_LS,                /* ls : list files in DIR $1 */
+	TOK_EX,                /* ex : execute */
+	TOK_FI,                /* fi : make a fifo */
 	TOK_HA,                /* ha : halt */
-	TOK_PO,                /* po : power off */
-	TOK_RB,                /* rb : reboot */
-	TOK_SP,                /* sp : suspend */
 	TOK_HE,                /* he : help */
+	TOK_IN,                /* in : set init program */
+	TOK_LN,                /* ln : make a symlink */
+	TOK_LO,                /* lo : losetup */
+	TOK_LS,                /* ls : list files in DIR $1 */
+	TOK_MA,                /* ma : set umask */
+	TOK_MD,                /* md : mkdir */
+	TOK_MT,                /* mt : mount */
+	TOK_MV,                /* mv : move a filesystem */
+	TOK_PO,                /* po : power off */
+	TOK_PR,                /* pr : pivot root */
+	TOK_RB,                /* rb : reboot */
+	TOK_RD,                /* rd : read a command from the console */
+	TOK_RE,                /* re : remount */
+	TOK_RM,                /* rm : remove files */
+	TOK_RX,                /* rx : execute under chroot */
+	TOK_SP,                /* sp : suspend */
+	TOK_ST,                /* st : stat file existence */
+	TOK_SW,                /* sw : switch root = chdir + chroot . + reopen console */
+	TOK_TA,                /* ta : tar "t"/"x"/"xv" archive $2 to dir #3 */
+	TOK_TD,                /* td : test /dev for devtmpfs support */
+	TOK_TE,                /* te : test an environment variable */
+	TOK_UM,                /* um : umount a filesystem */
+	TOK_WK,                /* wk : wait key */
 	/* better add new commands above */
 	TOK_OB,	               /* {  : begin a command block */
 	TOK_CB,	               /* }  : end a command block */
@@ -249,46 +249,50 @@ enum {
  * number.
  */
 static const struct token tokens[] = {
-	"ln", 'L', 2,   /* TOK_LN */
-	"md", 'D', 1,   /* TOK_MD */
-	"mt", 'M', 3,   /* TOK_MT */
-	"re",   0, 3,   /* TOK_RE */
-	"in", 'I', 1,   /* TOK_IN */
-	"br",   0, 1,   /* TOK_BR */
-	"ex", 'E', 1,   /* TOK_EX */
-	"rx", 'R', 2,   /* TOK_RX */
-	"bl", 'B', 6,   /* TOK_BL */
-	"ch", 'C', 6,   /* TOK_CH */
-	"fi", 'F', 4,   /* TOK_FI */
-	"ma", 'U', 1,   /* TOK_MA */
-	"ca",   0, 1,   /* TOK_CA */
-	"cd",   0, 1,   /* TOK_CD */
-	"cp",   0, 2,   /* TOK_CP */
-	"cr",   0, 1,   /* TOK_CR */
-	"sw",   0, 1,   /* TOK_SW */
-	"pr", 'P', 2,   /* TOK_PR */
-	"mv", 'K', 2,   /* TOK_MV */
-	"bi", 'K', 2,   /* TOK_BI */
-	"um", 'O', 1,   /* TOK_UM */
-	"lo", 'l', 2,   /* TOK_LO */
-	"ec",   0, 0,   /* TOK_EC */
-	"eq",   0, 2,   /* TOK_EQ */
-	"te",   0, 1,   /* TOK_TE */
-	"rd",   0, 0,   /* TOK_RD */
-	"rm",   0, 1,   /* TOK_RM */
-	"st",   0, 1,   /* TOK_ST */
-	"wk",   0, 2,   /* TOK_WK */
-	"td",   0, 0,   /* TOK_TD */
-	"ta",   0, 3,   /* TOK_TA */
-	"ls",   0, 0,   /* TOK_LS */
-	"ha",   0, 0,   /* TOK_HA */
-	"po",   0, 0,   /* TOK_PO */
-	"rb",   0, 0,   /* TOK_RB */
-	"sp",   0, 0,   /* TOK_SP */
-	"he", '?', 0,   /* TOK_HE */
-	"{",  '{', 0,   /* TOK_OB */
-	"}",  '}', 0,   /* TOK_CB */
-	".",  '.', 0,   /* TOK_DOT : put every command before this one */
+	/* TOK_BI */ "bi", 'K', 2,
+	/* TOK_BL */ "bl", 'B', 6,
+	/* TOK_BR */ "br",   0, 1,
+	/* TOK_CA */ "ca",   0, 1,
+	/* TOK_CD */ "cd",   0, 1,
+	/* TOK_CH */ "ch", 'C', 6,
+	/* TOK_CP */ "cp",   0, 2,
+	/* TOK_CR */ "cr",   0, 1,
+	/* TOK_EC */ "ec",   0, 0,
+	/* TOK_EQ */ "eq",   0, 2,
+	/* TOK_EX */ "ex", 'E', 1,
+	/* TOK_FI */ "fi", 'F', 4,
+	/* TOK_HA */ "ha",   0, 0,
+	/* TOK_HE */ "he", '?', 0,
+	/* TOK_IN */ "in", 'I', 1,
+	/* TOK_LN */ "ln", 'L', 2,
+	/* TOK_LO */ "lo", 'l', 2,
+	/* TOK_LS */ "ls",   0, 0,
+	/* TOK_MA */ "ma", 'U', 1,
+	/* TOK_MD */ "md", 'D', 1,
+	/* TOK_MT */ "mt", 'M', 3,
+	/* TOK_MV */ "mv", 'K', 2,
+	/* TOK_PO */ "po",   0, 0,
+	/* TOK_PR */ "pr", 'P', 2,
+	/* TOK_RB */ "rb",   0, 0,
+	/* TOK_RD */ "rd",   0, 0,
+	/* TOK_RE */ "re",   0, 3,
+	/* TOK_RM */ "rm",   0, 1,
+	/* TOK_RX */ "rx", 'R', 2,
+	/* TOK_SP */ "sp",   0, 0,
+	/* TOK_ST */ "st",   0, 1,
+	/* TOK_SW */ "sw",   0, 1,
+	/* TOK_TA */ "ta",   0, 3,
+	/* TOK_TD */ "td",   0, 0,
+	/* TOK_TE */ "te",   0, 1,
+	/* TOK_UM */ "um", 'O', 1,
+	/* TOK_WK */ "wk",   0, 2,
+	/**** end of commands dumped by the help command ****/
+
+	/* TOK_OB */ "{",  '{', 0,
+	/* TOK_CB */ "}",  '}', 0,
+
+	/**** all supported commands must be before this one ****/
+	/* TOK_DOT*/ ".",  '.', 0,
 };
 
 /* mandatory device nodes : name, mode, gid, major, minor */
