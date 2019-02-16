@@ -295,6 +295,47 @@ static const struct token tokens[] = {
 	/* TOK_DOT*/ ".",  '.', 0,
 };
 
+/* One string per token, each terminated by a zero */
+static const char tokens_help[] =
+	/* TOK_BI */ "BInd old_dir new_dir : mount --bind\0"
+	/* TOK_BL */ "BLockdev mode uid gid major minor rule\0"
+	/* TOK_BR */ "BRanch cmd [args] : execve\0"
+	/* TOK_CA */ "CAt file\0"
+	/* TOK_CD */ "ChDir dir\0"
+	/* TOK_CH */ "CHardev mode uid gid major minor rule\0"
+	/* TOK_CP */ "CP src dst\0"
+	/* TOK_CR */ "ChRoot dir\0"
+	/* TOK_EC */ "ECho string\0"
+	/* TOK_EQ */ "EQ str1 str2 : compare strings\0"
+	/* TOK_EX */ "EXec cmd [args] : fork+execve\0"
+	/* TOK_FI */ "FIfo mode uid gid name\0"
+	/* TOK_HA */ "HAlt\0"
+	/* TOK_HE */ "HElp\0"
+	/* TOK_IN */ "INit path\0"
+	/* TOK_LN */ "LN target link : symlink\0"
+	/* TOK_LO */ "LOsetup /dev/loopX file\0"
+	/* TOK_LS */ "LS [-e|-l] dir\0"
+	/* TOK_MA */ "uMAsk umask\0"
+	/* TOK_MD */ "MkDir path [mode]\0"
+	/* TOK_MT */ "MounT dev[(major:minor)] mnt type [{rw|ro} [flags]]\0"
+	/* TOK_MV */ "MoVe old_dir new_dir : mount --move\0"
+	/* TOK_PO */ "POwer off\0"
+	/* TOK_PR */ "PivotRoot new_root old_relative\0"
+	/* TOK_RB */ "ReBoot\0"
+	/* TOK_RD */ "ReaD prompt\0"
+	/* TOK_RE */ "REmount dev[(major:minor)] mnt type [{rw|ro} [flags]]\0"
+	/* TOK_RM */ "RM file\0"
+	/* TOK_RX */ "Remote-eXec dir cmd [args] : fork+chroot+execve\0"
+	/* TOK_SP */ "SusPend\0"
+	/* TOK_ST */ "STat file\0"
+	/* TOK_SW */ "SWitchroot root\0"
+	/* TOK_TA */ "TAr [x|xv|t] file [dir]\0"
+	/* TOK_TD */ "TestDev : test if /dev is devtmpfs\0"
+	/* TOK_TE */ "TEst var=val\0"
+	/* TOK_UM */ "UMount dir\0"
+	/* TOK_WK */ "WaitKey prompt delay\0"
+	;
+
 /* mandatory device nodes : name, mode, gid, major, minor */
 static const struct dev_node dev_nodes[] =  {
 	/* console must always be at the first location */
@@ -1988,9 +2029,11 @@ int main(int argc, char **argv, char **envp)
 				goto finish_cmd;
 			} else if (token == TOK_HE) {
 				int i;
+				const char *help = tokens_help;
+
 				/* ? / help : show supported commands */
 				println("Supported commands:");
-				println("# long short args");
+				println("# long short args help");
 				for (i = 0; i < TOK_OB; i++) {
 					print("   ");
 					printn(tokens[i].lcmd, 2);
@@ -1998,7 +2041,11 @@ int main(int argc, char **argv, char **envp)
 					pchar(tokens[i].scmd ? tokens[i].scmd : '-');
 					print("    ");
 					pchar(tokens[i].minargs + '0');
+					print("   ");
+					if (*help)
+						print(help);
 					pchar('\n');
+					help = help + my_strlen(help) + 1;
 				}
 				goto finish_cmd;
 			}
