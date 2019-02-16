@@ -227,6 +227,7 @@ enum {
 	TOK_PO,                /* po : power off */
 	TOK_RB,                /* rb : reboot */
 	TOK_SP,                /* sp : suspend */
+	TOK_HE,                /* he : help */
 	/* better add new commands above */
 	TOK_OB,	               /* {  : begin a command block */
 	TOK_CB,	               /* }  : end a command block */
@@ -284,6 +285,7 @@ static const struct token tokens[] = {
 	"po",   0, 0,   /* TOK_PO */
 	"rb",   0, 0,   /* TOK_RB */
 	"sp",   0, 0,   /* TOK_SP */
+	"he", '?', 0,   /* TOK_HE */
 	"{",  '{', 0,   /* TOK_OB */
 	"}",  '}', 0,   /* TOK_CB */
 	".",  '.', 0,   /* TOK_DOT : put every command before this one */
@@ -1979,6 +1981,21 @@ int main(int argc, char **argv, char **envp)
 				char *res = get_dev_type();
 
 				error = !res || !streq(res, "devtmpfs");
+				goto finish_cmd;
+			} else if (token == TOK_HE) {
+				int i;
+				/* ? / help : show supported commands */
+				println("Supported commands:");
+				println("# long short args");
+				for (i = 0; i < TOK_OB; i++) {
+					print("   ");
+					printn(tokens[i].lcmd, 2);
+					print("    ");
+					pchar(tokens[i].scmd ? tokens[i].scmd : '-');
+					print("    ");
+					pchar(tokens[i].minargs + '0');
+					pchar('\n');
+				}
 				goto finish_cmd;
 			}
 
