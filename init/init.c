@@ -331,6 +331,29 @@ static char tmp_path[MAXPATHLEN];
  */
 
 
+/* Used to emit informative messages */
+static void print(char *c)
+{
+	char *p = c;
+
+	while (*p)
+		p++;
+
+	write(1, c, p-c);
+}
+
+/* same as above but also adds a trailing '\n' */
+static void println(char *c)
+{
+	char *p = c;
+
+	while (*p)
+		p++;
+
+	write(1, c, p-c);
+	write(1, "\n", 1);
+}
+
 /* Used only to emit debugging messages when compiled with -DDEBUG */
 static void debug(char *c)
 {
@@ -1041,8 +1064,7 @@ static int list_dir(const char *fmt, const char *dir)
 #endif
 				write(1, str, 2);
 			}
-			write(1, d->d_name, my_strlen(d->d_name));
-			write(1, "\n", 1);
+			println(d->d_name);
 		}
 	}
 	/* here we have ret = 0 on success or -1 on error. We may want to change
@@ -1962,14 +1984,9 @@ int main(int argc, char **argv, char **envp)
 				   wk <string> <delay> : display message and wait for a key for at most <delay> seconds.
 				   returns TRUE if a key is pressed, FALSE otherwise.
 				*/
-				char *msg;
-				int len;
 
-				if (cfg_args[1] != NULL) {
-					len = my_strlen(cfg_args[1]);
-					cfg_args[1][len] = '\n';
-					write(1, cfg_args[1], len + 1);
-				}
+				if (cfg_args[1] != NULL)
+					println(cfg_args[1]);
 
 				if (token == TOK_WK) {
 					error = !keypressed(my_atoul(cfg_args[2]));
