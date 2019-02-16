@@ -331,27 +331,40 @@ static char tmp_path[MAXPATHLEN];
  */
 
 
-/* Used to emit informative messages */
-static void print(char *c)
+/* prints character <c> */
+static void pchar(char c)
 {
-	char *p = c;
+	write(1, &c, 1);
+}
 
-	while (*p)
+/* prints string <s> up to <n> chars */
+static void printn(const char *c, int n)
+{
+	const char *p = c;
+
+	while (*p && n--)
 		p++;
 
 	write(1, c, p-c);
 }
 
 /* same as above but also adds a trailing '\n' */
-static void println(char *c)
+static void printnln(const char *c, int n)
 {
-	char *p = c;
+	printn(c, n);
+	pchar('\n');
+}
 
-	while (*p)
-		p++;
+/* Used to emit informative messages */
+static void print(const char *c)
+{
+	printn(c, -1);
+}
 
-	write(1, c, p-c);
-	write(1, "\n", 1);
+/* same as above but also adds a trailing '\n' */
+static void println(const char *c)
+{
+	printnln(c, -1);
 }
 
 /* Used only to emit debugging messages when compiled with -DDEBUG */
@@ -870,11 +883,8 @@ static int tar_extract(const char *action, const char *file, const char *dir)
 		len += my_strlcpy(dest + len, blk.hdr.prefix, 156);     // max 155 copied.
 		len += my_strlcpy(dest + len, blk.hdr.name, 101);       // max 100 copied.
 
-		if (action[0] == 't' || (action[0] == 'x' && action[1] == 'v')) {
-			dest[len] = '\n';
-			write(1, dest, len + 1);
-			dest[len] = 0;
-		}
+		if (action[0] == 't' || (action[0] == 'x' && action[1] == 'v'))
+			printnln(dest, len);
 
 		/* now concatenate <dir>, "/" and <dest> into <name> */
 		pos = 0;
@@ -1062,7 +1072,7 @@ static int list_dir(const char *fmt, const char *dir)
 				default      : str = "? "; break;
 				}
 #endif
-				write(1, str, 2);
+				printn(str, 2);
 			}
 			println(d->d_name);
 		}
@@ -1811,7 +1821,7 @@ int main(int argc, char **argv, char **envp)
 					*p++ = '}';
 				}
 				*p++ = ' ';
-				write(1, prompt, p-prompt);
+				printn(prompt, p-prompt);
 
 				len = read(0,  cmd_line, sizeof(cmd_line)-1);
 				if (len > 0) {
