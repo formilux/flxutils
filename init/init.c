@@ -310,7 +310,7 @@ static const char tokens_help[] =
 	/* TOK_EX */ "EXec cmd [args] : fork+execve\0"
 	/* TOK_FI */ "FIfo mode uid gid name\0"
 	/* TOK_HA */ "HAlt\0"
-	/* TOK_HE */ "HElp\0"
+	/* TOK_HE */ "HElp [cmd]\0"
 	/* TOK_IN */ "INit path\0"
 	/* TOK_LN */ "LN target link : symlink\0"
 	/* TOK_LO */ "LOsetup /dev/loopX file\0"
@@ -2032,19 +2032,24 @@ int main(int argc, char **argv, char **envp)
 				const char *help = tokens_help;
 
 				/* ? / help : show supported commands */
-				println("Supported commands:");
+				if (!cfg_args[1])
+					println("Supported commands:");
 				println("# long short args help");
 				for (i = 0; i < TOK_OB; i++) {
-					print("   ");
-					printn(tokens[i].lcmd, 2);
-					print("    ");
-					pchar(tokens[i].scmd ? tokens[i].scmd : '-');
-					print("    ");
-					pchar(tokens[i].minargs + '0');
-					print("   ");
-					if (*help)
-						print(help);
-					pchar('\n');
+					if (!cfg_args[1] ||
+					    streqlen(cfg_args[1], tokens[i].lcmd, 2) ||
+					    (!cfg_args[1][1] && cfg_args[1][0] == tokens[i].scmd)) {
+						print("   ");
+						printn(tokens[i].lcmd, 2);
+						print("    ");
+						pchar(tokens[i].scmd ? tokens[i].scmd : '-');
+						print("    ");
+						pchar(tokens[i].minargs + '0');
+						print("   ");
+						if (*help)
+							print(help);
+						pchar('\n');
+					}
 					help = help + my_strlen(help) + 1;
 				}
 				goto finish_cmd;
