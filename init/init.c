@@ -574,27 +574,24 @@ static char *addchr(char *dest, char chr)
 	return dest;
 }
 
-/* appends an 8-bit unsigned integer <num> to the end <dest> of a string and
+/* appends a 32-bit unsigned integer <num> to the end <dest> of a string and
  * returns the pointer to the new end. No size checks are performed.
  */
-static char *addint(char *dest, uint8_t num)
+static char *adduint(char *dest, uint32_t num)
 {
-	int div;
-	char *out = dest;
+	uint32_t div;
 
-	for (div = (1 << 16) + (10 << 8) + 100; div > 0;) {
-		int q, r, d;
-		d = (unsigned char)div;
-		q = num / d; r = num % d;
-		div >>= 8;
+	for (div = 1; num / div >= 10; div *= 10)
+		;
 
-		if (!div || (out != dest) || q) {
-			*out++ = q + '0';
-		}
-		num = r;
+	while (div) {
+		*dest++ = '0' + num / div;
+		num %= div;
+		div /= 10;
 	}
-	*out = '\0';
-	return out;
+
+	*dest = '\0';
+	return dest;
 }
 
 /* appends an 8-bit unsigned hex integer <num> to the end <dest> of a string
@@ -1531,11 +1528,11 @@ static void name_and_minor(char *name, uint8_t *minor, int fields)
 			name = addhex(name, var[f].u.num.value);
 			goto recalc_int;
 		case 'i' :
-			name = addint(name, var[f].u.num.value);
+			name = adduint(name, var[f].u.num.value);
 			goto recalc_int;
 		case 'I' :
 			if (var[f].u.num.value)
-				name = addint(name, var[f].u.num.value);
+				name = adduint(name, var[f].u.num.value);
 		recalc_int:
 			min += (var[f].u.num.value - var[f].u.num.low) * var[f].scale;
 			break;
