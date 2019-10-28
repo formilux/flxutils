@@ -369,6 +369,7 @@ static char *var_str[MAX_FIELDS];
 static char mounts[MAX_MNT_SIZE];
 static struct dev_varstr var[MAX_FIELDS];
 static int error;       /* an error has emerged from last operation */
+static int error_num;   /* a copy of errno when error != 0 */
 static int linuxrc;     /* non-zero if we were called as 'linuxrc' */
 static char tmp_path[MAXPATHLEN];
 
@@ -760,11 +761,13 @@ static int mknod_chown(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t
 	int error;
 
 	if (mknod(name, mode, makedev(major, minor)) == -1 && chmod(name, mode) == -1) {
+		error_num = errno;
 		error = 1;
 		debug("init/error : mknod("); debug(name); debug(") failed\n");
 	}
 
 	if (chown(name, uid, gid) == -1) {
+		error_num = errno;
 		error = 1;
 		debug("init/error : chown("); debug(name); debug(") failed\n");
 	}
@@ -798,8 +801,11 @@ static int recursive_mkdir(const char *path, mode_t mode)
 				tmp_path[pos] = 0;
 				ret = recursive_mkdir(tmp_path, 0755);
 				tmp_path[pos] = '/';
-				if (ret == 0)
+				if (ret == 0) {
 					ret = mkdir(tmp_path, mode);
+					if (ret < 0)
+						error_num = errno;
+				}
 				break;
 			}
 		}
@@ -892,6 +898,7 @@ static int tar_extract(const char *action, const char *file, const char *dir)
 		action = "";
 
 	ret = fd = open(file, O_RDONLY, 0);
+	error_num = errno;
 	if (ret < 0)
 		goto out_ret;
 
@@ -903,6 +910,7 @@ static int tar_extract(const char *action, const char *file, const char *dir)
 		 * consecutive empty blocks seen.
 		 */
 		len = read(fd, blk.buffer, sizeof(blk.buffer));
+		error_num = errno;
 		if (len < sizeof(blk.buffer))
 			goto out_fail;
 
@@ -965,15 +973,20 @@ static int tar_extract(const char *action, const char *file, const char *dir)
 			case  0  :
 			case '0' : /* normal file */
 				ret = outfd = open(name, O_CREAT|O_WRONLY|O_TRUNC|O_LARGEFILE, mode);
-				chown(name, uid, gid);
+				if (ret >= 0)
+					chown(name, uid, gid);
+				error_num = errno;
 				/* the error is handled below by not copying the data */
 				break;
 			case '1' : /* hard link */
 				ret = link(dest, name);
+				error_num = errno;
 				break;
 			case '2' : /* symlink */
 				ret = symlink(dest, name);
-				chown(name, uid, gid);
+				if (ret >= 0)
+					chown(name, uid, gid);
+				error_num = errno;
 				break;
 			case '3' : /* char dev */
 				ret = -mknod_chown(mode | S_IFCHR, uid, gid, major, minor, name);
@@ -1003,6 +1016,7 @@ static int tar_extract(const char *action, const char *file, const char *dir)
 				len = sizeof(buffer);
 			len = (len + 511) & -512;
 			len = read(fd, buffer, len);
+			error_num = errno;
 			if (len <= 0)
 				goto out_fail;
 
@@ -1012,6 +1026,7 @@ static int tar_extract(const char *action, const char *file, const char *dir)
 
 			if (outfd >= 0) {
 				if (write(outfd, buffer, len) < 0) {
+					error_num = errno;
 					close(outfd);
 					outfd = -1;
 				}
@@ -1067,6 +1082,7 @@ static int list_dir(const char *fmt, const char *dir)
 		fmt++;
 
 	ret = fd = open(dir, O_RDONLY | O_DIRECTORY, 0);
+	error_num = errno;
 	if (ret < 0)
 		goto out_ret;
 
@@ -1149,10 +1165,13 @@ static char *get_dev_type()
 	int best;
 	char *ptr, *end, *mnt, *match;
 
-	if ((fd = open("/proc/mounts", O_RDONLY, 0)) == -1)
+	if ((fd = open("/proc/mounts", O_RDONLY, 0)) == -1) {
+		error_num = errno;
 		return NULL;
+	}
 
 	len = read(fd, mounts, sizeof(mounts) - 1);
+	error_num = errno;
 	close(fd);
 	if (len <= 0)
 		return NULL;
@@ -1208,6 +1227,7 @@ char *find_arg(char *arg)
 			return NULL;
 
 		cmdline_len = read(fd, cmdline, sizeof(cmdline)-1);
+		error_num = errno;
 		close(fd);
 		if (cmdline_len <= 0)
 			return NULL;
@@ -1262,6 +1282,7 @@ static int read_cfg(char *cfg_file)
 	if (cfg_line == NULL) {
 		if (((cfg_fd = open(cfg_file, O_RDONLY, 0)) == -1) ||
 		    ((cfg_size = read(cfg_fd, cfg_data, sizeof(cfg_data) - 1)) == -1)) {
+			error_num = errno;
 			return -1;
 		}
 		close(cfg_fd);
@@ -1841,7 +1862,7 @@ int main(int argc, char **argv, char **envp)
 			if (cmd_input == INPUT_KBD) {
 				int len;
 				char *cmd_ptr = cmd_line;
-				char prompt[sizeof(cmd_line) + MAX_BRACE_LEVEL + 4];
+				char prompt[sizeof(cmd_line) + MAX_BRACE_LEVEL + 16];
 				char *p = prompt;
 				int lev1, lev2;
 
@@ -1849,7 +1870,11 @@ int main(int argc, char **argv, char **envp)
 					p += my_strlcpy(p, ret_msg, sizeof(cmd_line));
 
 				ret_msg = NULL;
-				p += my_strlcpy(p, error ? "ER\n>" : "OK\n>", 5);
+				p = addcst(p, error ? "ER (" : "OK\n>");
+				if (error) {
+					p = adduint(p, error_num);
+					p = addcst(p, ")\n>");
+				}
 
 				lev1 = run_level;
 				lev2 = brace_level;
@@ -2099,6 +2124,7 @@ int main(int argc, char **argv, char **envp)
 			case TOK_LN:
 				/* ln from to : make a symlink */
 				if (symlink(cfg_args[1], cfg_args[2]) == -1) {
+					error_num = errno;
 					error = 1;
 					debug("<S>ymlink : symlink() failed\n");
 				}
@@ -2113,15 +2139,19 @@ int main(int argc, char **argv, char **envp)
 				struct stat stat_buf;
 
 				err = 1;
-				if (stat(cfg_args[1], &stat_buf) == -1)
+				if (stat(cfg_args[1], &stat_buf) == -1) {
+					error_num = errno;
 					goto stat_err;
+				}
 
 				src = open(cfg_args[1], O_RDONLY, 0);
+				error_num = errno;
 				if (src < 0)
 					goto open_err_src;
 
 				if (token == TOK_CP) {
 					dst = open(cfg_args[2], O_CREAT|O_WRONLY|O_TRUNC|O_LARGEFILE, stat_buf.st_mode);
+					error_num = errno;
 					if (dst < 0)
 						goto open_err_dst;
 				} else {
@@ -2133,10 +2163,13 @@ int main(int argc, char **argv, char **envp)
 					len = read(src, buffer, sizeof(buffer));
 					if (len == 0)
 						break;
+					error_num = errno;
 					if (len < 0)
 						goto read_err;
-					if (write(dst, buffer, len) < 0)
+					if (write(dst, buffer, len) < 0) {
+						error_num = errno;
 						goto write_err;
+					}
 				}
 				err = 0;
 				read_err:
@@ -2155,6 +2188,7 @@ int main(int argc, char **argv, char **envp)
 				struct stat stat_buf;
 
 				if (stat(cfg_args[1], &stat_buf) == -1) {
+					error_num = errno;
 					error = 1;
 				}
 				goto finish_cmd;
@@ -2165,6 +2199,7 @@ int main(int argc, char **argv, char **envp)
 
 				while (cfg_args[arg]) {
 					if (unlink(cfg_args[arg]) == -1) {
+						error_num = errno;
 						error = 1;
 						debug("Unlink : unlink() failed\n");
 					}
@@ -2177,6 +2212,7 @@ int main(int argc, char **argv, char **envp)
 			case TOK_CH:
 				/* ch <mode> <uid> <gid> <major> <minor> <naming rule> : build a character device */
 				if (chdir("/dev") == -1) {
+					error_num = errno;
 					debug("<B>lock_dev/<C>har_dev : cannot chdir(/dev)\n");
 					error = 1;
 					goto finish_cmd;
@@ -2190,6 +2226,7 @@ int main(int argc, char **argv, char **envp)
 			case TOK_FI:
 				/* F <mode> <uid> <gid> <name> : build a fifo */
 				if (chdir("/dev") == -1) {
+					error_num = errno;
 					debug("<F>ifo : cannot chdir(/dev)\n");
 					error = 1;
 					goto finish_cmd;
@@ -2252,6 +2289,7 @@ int main(int argc, char **argv, char **envp)
 
 					dev = makedev(imaj, imin);
 					if (mknod(mntdev, S_IFBLK|0600, dev) == -1) { /* makes the node as required */
+						error_num = errno;
 						error = 1;
 						debug("<M>ount : mknod() failed\n");
 					}
@@ -2270,6 +2308,7 @@ int main(int argc, char **argv, char **envp)
 					mntarg |= MS_REMOUNT;
 
 				if (mount(mntdev, cfg_args[2], cfg_args[3], MS_MGC_VAL | mntarg, cfg_args[5]) == -1) {
+					error_num = errno;
 					error = 1;
 					debug("<M>ount : error during mount()\n");
 				}
@@ -2358,11 +2397,13 @@ int main(int argc, char **argv, char **envp)
 					debug("<E>xec(parent) : waiting for termination\n");
 					while (((ret = wait(&error)) != -1) && (ret != res))
 						debug("<E>xec(parent) : signal received\n");
-		    
-					error = (ret == -1) || ((WIFEXITED(error) > 0) ? WEXITSTATUS(error) : 1);
+
+					error_num = ((WIFEXITED(error) > 0) ? WEXITSTATUS(error) : 1);
+					error = (ret == -1) || error_num;
 					debug("<E>xec(parent) : child exited\n");
 				}
 				else {
+					error_num = errno;
 					debug("<E>xec : fork() failed\n");
 					error = 1;
 				}
@@ -2375,6 +2416,7 @@ int main(int argc, char **argv, char **envp)
 			case TOK_CD:
 				/* cd <new_dir> : change current directory */
 				if (chdir(cfg_args[1]) == -1) {
+					error_num = errno;
 					error = 1;
 					debug("cd : error during chdir()\n");
 				}
@@ -2382,6 +2424,7 @@ int main(int argc, char **argv, char **envp)
 			case TOK_CR:
 				/* cr <new_root> : change root without chdir */
 				if (chroot(cfg_args[1]) == -1) {
+					error_num = errno;
 					error = 1;
 					debug("cr (chroot) : error during chroot()\n");
 				}
@@ -2389,10 +2432,12 @@ int main(int argc, char **argv, char **envp)
 			case TOK_SW:
 				/* sw <new_root> : switch root + reopen console from new root if it exists */
 				if (chroot(cfg_args[1]) == -1) {
+					error_num = errno;
 					error = 1;
 					debug("cr (chroot) : error during chroot()\n");
 				}
 				if (chdir("/") == -1) {
+					error_num = errno;
 					error = 1;
 					debug("cd : error during chdir()\n");
 				}
@@ -2402,17 +2447,20 @@ int main(int argc, char **argv, char **envp)
 			case TOK_PR:
 				/* P <new_root> <put_old_relative> : pivot root */
 				if (chdir(cfg_args[1]) == -1) {
+					error_num = errno;
 					error = 1;
 					debug("<P>ivot : error during chdir(new root)\n");
 				}
 
 				if (pivot_root(".", cfg_args[2]) == -1) {
+					error_num = errno;
 					error = 1;
 					debug("<P>ivot : error during pivot_root()\n");
 				}
 
 				chroot(".");
 				if (chdir("/") == -1) {
+					error_num = errno;
 					error = 1;
 					debug("<P>ivot : error during chdir(/)\n");
 				}
@@ -2433,6 +2481,7 @@ int main(int argc, char **argv, char **envp)
 				 * <new_dir> will show the same contents as <old_dir>.
 				 */
 				if (mount(cfg_args[1], cfg_args[2], cfg_args[1], MS_MGC_VAL | MS_BIND, NULL) == -1) {
+					error_num = errno;
 					error = 1;
 					debug("<bi> : error during mount|bind\n");
 				}
@@ -2442,6 +2491,7 @@ int main(int argc, char **argv, char **envp)
 			case TOK_UM:
 				/* um <old_dir> : umount <old_dir> after a pivot. */
 				if (umount2(cfg_args[1], MNT_DETACH) == -1) {
+					error_num = errno;
 					error = 1;
 					debug("<um> : error during umount\n");
 				}
@@ -2452,11 +2502,13 @@ int main(int argc, char **argv, char **envp)
 				int lfd, ffd;
 
 				if ((lfd = open(cfg_args[1], O_RDONLY, 0)) < 0) {
+					error_num = errno;
 					error = 1;
 					debug("(l)osetup : error opening loop device\n");
 					break;
 				}
 				if ((ffd = open(cfg_args[2], O_RDONLY, 0)) < 0) {
+					error_num = errno;
 					error = 1;
 					debug("(l)osetup : error opening image\n");
 					goto losetup_close_all;
@@ -2464,11 +2516,13 @@ int main(int argc, char **argv, char **envp)
 				memset(&loopinfo, 0, sizeof (loopinfo));
 				my_strlcpy(loopinfo.lo_name, cfg_args[2], LO_NAME_SIZE);
 				if (ioctl(lfd, LOOP_SET_FD, (void *)(long)ffd) < 0) {
+					error_num = errno;
 					error = 1;
 					debug("(l)osetup : error during LOOP_SET_FD\n");
 					goto losetup_close_all;
 				}
 				if (ioctl(lfd, LOOP_SET_STATUS, &loopinfo) < 0) {
+					error_num = errno;
 					error = 1;
 					ioctl(lfd, LOOP_CLR_FD, (void *)0);
 					debug("(l)osetup : error during LOOP_SET_STATUS\n");
@@ -2491,6 +2545,7 @@ int main(int argc, char **argv, char **envp)
 				               token == TOK_PO ? LINUX_REBOOT_CMD_POWER_OFF :
 				               token == TOK_RB ? LINUX_REBOOT_CMD_RESTART :
 				               /* TOK_SP */      LINUX_REBOOT_CMD_SW_SUSPEND);
+				error_num = errno;
 				break;
 			}
 			default:
