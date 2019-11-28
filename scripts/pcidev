@@ -178,7 +178,7 @@ for device in $pcidev; do
     if [ ! -z "$MAPFILE" -a -s "${MAPFILE%.pcimap}.alias" ]; then
         alias=$(printf "pci:v%08Xd%08Xsv%08Xsd%08Xbc%02Xsc%02Xi%02X" $xvid $xpid $xsvid $xspid $(((xclass >> 16) & 0xff)) $(((xclass >> 8) & 0xff)) $((xclass & 0xff)))
         list=""
-        for f1 in $(modprobe -R "$alias"); do
+        for f1 in $(modprobe -q -R "$alias"); do
             [ -n "${EXCLMOD}" -a "${EXCLMOD[*]##*|$f1|*}" != "${EXCLMOD[*]}" ] && continue
             [ -z "${ONLYMOD}" -o "${ONLYMOD[*]##*|$f1|*}" != "${ONLYMOD[*]}" ] || continue
             list="$list$f1 "
