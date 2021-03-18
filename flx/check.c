@@ -24,6 +24,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <fnmatch.h>
 
 #include "flx.h"
 #include "check.h"
@@ -52,6 +53,7 @@ static POOL_INIT(t_file_diff);
 #define O_OUTPUT            18
 #define O_IGN_DOT           19
 #define O_IGN_DIR           20
+#define O_EXCLUDE_FROM      21
 
 t_param flxcheck_poptions[] = {
     { 'h', "help", O_HELP, 0, 
@@ -74,6 +76,8 @@ t_param flxcheck_poptions[] = {
       "--ignore-dot          do not compare '.' and '..'" },
     { 0, "ignore-dir", O_IGN_DIR, 0,
       "--ignore-dir          do not compare directories" },
+    { 0, "exclude-from", O_EXCLUDE_FROM, 1,
+      "--exclude-from <file> exclude patterns listed in this file" },
     { 0, "show-all", O_SH_ALL, 0,
       "--show-all            show all files (same and differs)" },
     { 0, "only-new", O_SH_NEW, 0,
@@ -120,6 +124,10 @@ static t_source_type OutputTypes[] = {
 static void *InputSrc1, *InputSrc2, *Output;
 static char *Rewrite_Src1 = NULL, *Rewrite_Src2 = NULL, *Output_Str = NULL;
 
+static struct pattern {
+	struct pattern *next;  // next entry or NULL when end is reached
+	char *pat;             // pattern to exclude
+} *exclude_patterns = NULL;
 
 /* cette fonction permet de repérer toutes les données communes à deux sources et de 
  * les inserer dans un autre arbre
@@ -385,8 +393,15 @@ t_file_diff   *fct_free_diff_desc(void *data, t_file_diff *desc) {
 char  *build_diff_line(char *path, char *filename, t_file_diff *info) {
     static char tmp[BUFFER_LENGTH];
     static char opath[BUFFER_LENGTH];
+    struct pattern *pat;
     char        *s = tmp;
     char        *ppath;
+
+    /* verify if either path has to be excluded */
+    for (pat = exclude_patterns; pat; pat = pat->next) {
+	if (fnmatch(pat->pat, path, 0) == 0)
+	    return NULL;
+    }
     
     *s = 0;
     if (info->diff == 0) {
@@ -512,7 +527,44 @@ int flxcheck_main(int argc, char **argv) {
     return (0);
 }
 
+/* load exclude patterns from file <arg>, returns non-zero on success or zreo on
+ * error. An error will be printed before returning an error, thus it's safe to
+ * directly exit.
+ */
+int load_exclude(struct pattern **list, const char *arg)
+{
+	struct pattern *pat;
+	char buf[BUFFLEN];
+	char *ptr;
+	FILE *f;
 
+	f = fopen(arg, "r");
+	if (!f) {
+		pferror("error loading file %s", arg);
+		return 0;
+	}
+
+	while (fgets(buf, sizeof(buf), f) != NULL) {
+		ptr = strchr(buf, '\n');
+		if (!ptr)
+			break;
+		*ptr = 0;
+		pat = malloc(sizeof(*pat));
+		if (!pat) {
+			pferror("allocation error loading file %s", arg);
+			return 0;
+		}
+		pat->pat = strdup(buf);
+		if (!pat->pat) {
+			pferror("allocation error loading file %s", arg);
+			return 0;
+		}
+		pat->next = *list;
+		*list = pat;
+	}
+	fclose(f);
+	return 1;
+}
 
 int   flxcheck_pfct(int opt, t_param *param, char **flag, char **argv) {
     static int status = 1;  /* source 1 or source 2 */
@@ -533,6 +585,10 @@ int   flxcheck_pfct(int opt, t_param *param, char **flag, char **argv) {
     else if (opt == O_REWRITE_SRC1) Rewrite_Src1 = strdup(*(argv+1));
     else if (opt == O_REWRITE_SRC2) Rewrite_Src2 = strdup(*(argv+1));
     else if (opt == O_OUTPUT)       Output_Str = strdup(*(argv+1));
+    else if (opt == O_EXCLUDE_FROM) {
+	if (!load_exclude(&exclude_patterns, *(argv+1)))
+	    exit(1);
+    }
     else if (opt == O_IGN_DOT)      SET(Options, GOPT_IGNORE_DOT);
     else if (opt == -1) {
 	if (!strcmp(*argv, ",")) status = 3;
