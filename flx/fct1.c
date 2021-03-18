@@ -321,7 +321,7 @@ char *build_line(char *path, char *filename, t_file_desc *info) {
 
     /* bad data */
     if (!path) { 
-	sprintf(blk,"## anormal action : path=%s desc=%p", path, st); 
+	sprintf(blk,"## anormal action : path=%p desc=%p", path, st);
 	return (blk); 
     }
     
