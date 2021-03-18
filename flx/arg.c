@@ -61,7 +61,7 @@ int arg_init(int argc, char **argv, t_param *paramoptions, int (*paramfct)()) {
     
     argc--; argv++; flag = *argv;
     while (argc > 0) {
-
+	p = NULL;
 	opt = -1;
 	// printf("%d,%d: %s -> %s\n", argc, ft, *argv, flag);
 	if (*flag == '-' && ft == TUNDEF)      ft = TSHORT; 
