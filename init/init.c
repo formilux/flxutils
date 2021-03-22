@@ -79,6 +79,7 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <linux/loop.h>
+#include <sched.h>
 #include <errno.h>
 #include <dirent.h>
 #include <syscall.h>
