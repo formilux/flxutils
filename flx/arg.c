@@ -11,7 +11,6 @@
 #define TSHORT   2
 #define TLONG    4
 
-char    *Progname ;
 
 
 /* show usage for program with ParamOptions global pointer 
