@@ -71,6 +71,7 @@
 #include <sys/wait.h>
 #include <fcntl.h>
 #include <unistd.h>
+#include <sys/sysmacros.h>
 #include <string.h>
 #include <ctype.h>
 #include <sys/mount.h>
