@@ -51,6 +51,7 @@
 #include <stdlib.h>
 #include <sys/ioctl.h>
 #include <linux/loop.h>
+#include <sys/stat.h>
 #endif
 
 
