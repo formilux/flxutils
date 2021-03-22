@@ -42,6 +42,7 @@
 #ifndef NOLIBC
 #include <stdio.h>
 #include <sys/types.h>
+#include <sys/sysmacros.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <string.h>
