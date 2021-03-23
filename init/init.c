@@ -84,6 +84,7 @@
 #include <dirent.h>
 #include <syscall.h>
 #include <linux/reboot.h>
+#include <sys/reboot.h>
 #endif
 
 /*
