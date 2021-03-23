@@ -1992,8 +1992,8 @@ int main(int argc, char **argv, char **envp)
 			/* skip conditionnal executions if they cannot change the error status,
 			 * as well as blocks of code excluded from the evaluation
 			 */
-			if ((cond & TOK_COND_OR) && !context[brace_level].error ||
-			    (cond & TOK_COND_AND) && context[brace_level].error ||
+			if (((cond & TOK_COND_OR) && !context[brace_level].error) ||
+			    ((cond & TOK_COND_AND) && context[brace_level].error) ||
 			    (run_level < brace_level)) {
 				error = context[brace_level].error;
 				continue;
