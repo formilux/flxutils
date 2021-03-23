@@ -120,6 +120,8 @@ static int getdents64(int fd, struct linux_dirent64 *dirp, unsigned int count)
 {
 	return syscall(SYS_getdents64, fd, dirp, count);
 }
+
+int pivot_root(const char *new_root, const char *put_old);
 #endif
 
 /*
