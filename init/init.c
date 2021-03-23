@@ -1339,7 +1339,7 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp)
 		}
 
 		/* terminate the line cleanly to avoid further tests */
-		while (c = *cfg_line) {
+		while ((c = *cfg_line)) {
 			*cfg_line++ = '\0';
 			if (c == '\n')
 				break;
