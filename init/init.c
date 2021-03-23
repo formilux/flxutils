@@ -954,6 +954,8 @@ static int tar_extract(const char *action, const char *file, const char *dir)
 		uid  = base8_to_ul_lim(blk.hdr.uid,  sizeof(blk.hdr.uid));
 		gid  = base8_to_ul_lim(blk.hdr.gid,  sizeof(blk.hdr.gid));
 		size = base8_to_ul_lim(blk.hdr.size, sizeof(blk.hdr.size));
+		major = base8_to_ul_lim(blk.hdr.devmajor, sizeof(blk.hdr.devmajor));
+		minor = base8_to_ul_lim(blk.hdr.devminor, sizeof(blk.hdr.devminor));
 
 		if (*action == 'x') {
 			/* extract */
