@@ -840,7 +840,6 @@ static void reopen_console()
 static int is_dev_populated()
 {
 	struct stat statf;
-	int i;
 
 	if (stat("/dev/console", &statf) == -1)
 		return 0;
