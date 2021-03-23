@@ -2141,7 +2141,7 @@ int main(int argc, char **argv, char **envp)
 				/* cp <src> <dst> : copy a file and its mode */
 				char buffer[4096];
 				int src, dst;
-				int len, mode, err;
+				int len, err;
 				struct stat stat_buf;
 
 				err = 1;
