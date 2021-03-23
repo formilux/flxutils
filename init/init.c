@@ -1370,8 +1370,8 @@ static int parse_cfg(char **cfg_data, char *bufend, char **envp)
 
 		for (; *p && (nbargs < MAX_CFG_ARGS - 1); nbargs++) {
 			int backslash = 0, quote = 0, var_state = VAR_NONE;
-			char *dollar_ptr, *name_beg, *name_end;
-			char *brace_end, *def_beg, *def_end, *repl;
+			char *dollar_ptr = NULL, *name_beg = NULL, *name_end = NULL;
+			char *brace_end = NULL, *def_beg = NULL, *def_end = NULL, *repl = NULL;
 
 			cfg_args[nbargs] = p;
 
