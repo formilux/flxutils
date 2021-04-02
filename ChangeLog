@@ -1,3 +1,41 @@
+2021/04/02
+- released flxutils-0.1.37
+- lcd: make lcdwrite conflict-resistant
+- scripts/hotplug: protect against potential spaces in DEVPATH
+- scripts/hotplug: add support for scriptable rules
+- scripts: add an example usb-serial script for hotplug
+- init: rename print() to debug()
+- init: add print() and println()
+- init: add limited length versions of print/println
+- init: add a new "help" command
+- init: sort commands by alphabetic order
+- init: add a little description for each help command
+- init: make the help command support an optional command
+- init: make addint() support 32 bit values
+- init: report errno value in case of error
+- scripts/pcidev: keep modprobe silent when resolving aliases
+- scripts/pcidev: skip the alias resolution phase for loaded drivers
+- flx: fix warning about null argument to sprintf
+- flx: add missing include for major()/minor() since glibc 2.28
+- flx: fix zeroing of context in MD5Final()
+- flx: fix parser's handling of multi-args
+- flx: add --exclude-from to ignore certain files from a list during check
+- flx: remove a definition or Progname, to allow compilation with gcc>=10
+- init: add missing include for major()/minor() since glibc 2.28
+- init: fix missing include to define sched_yield()
+- init: add missing include for major()/minor() since glibc 2.28
+- signfs: add missing include for major()/minor() since glibc 2.28
+- init: add missing include for mknod() and mkdir() since glibc 2.28
+- init: fix uninitialized minor/major of char/block devices
+- init: remove unused variable in is_dev_populated()
+- init: silence warning around the config line parser
+- init: silence warning about possibly missing parenthesis
+- init: also include sys/reboot with recent libcs
+- init: define pivot_root on glibc
+- init: put correct braces around tokens definitions
+- init: remove unused variable 'mode' in cat/cp
+- init: silence 'may be used uninitialized' warnings in the parser
+
 2017/02/15
 - released flxutils-0.1.36
 - cleanup: remove old-flxpkg
