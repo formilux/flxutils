@@ -116,10 +116,12 @@ struct linux_dirent64 {
 	char           d_name[];
 };
 
-static int getdents64(int fd, struct linux_dirent64 *dirp, unsigned int count)
+#if (!defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 30))
+static long getdents64(int fd, struct linux_dirent64 *dirp, unsigned long count)
 {
 	return syscall(SYS_getdents64, fd, dirp, count);
 }
+#endif
 
 int pivot_root(const char *new_root, const char *put_old);
 #endif
