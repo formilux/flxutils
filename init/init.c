@@ -87,6 +87,8 @@
 #include <sys/reboot.h>
 #endif
 
+#include <linux/random.h>
+
 /*
  * compatibility defines in case they are missing
  */
@@ -187,6 +189,13 @@ struct dev_node {
 	char   major, minor;
 } __attribute__((__aligned__(1)));
 
+/* RNDADDENTROPY ioctl */
+struct rnd {
+	int entropy_count;
+	int buf_size;
+	char buf[1024];
+};
+
 /* possible states for variable parsing */
 enum {
 	VAR_NONE = 0,
@@ -225,6 +234,7 @@ enum {
 	TOK_RB,                /* rb : reboot */
 	TOK_RD,                /* rd : read a command from the console */
 	TOK_RE,                /* re : remount */
+	TOK_RF,                /* rf : random feed */
 	TOK_RM,                /* rm : remove files */
 	TOK_RX,                /* rx : execute under chroot */
 	TOK_SP,                /* sp : suspend */
@@ -283,6 +293,7 @@ static const struct token tokens[] = {
 	/* TOK_RB */ { "rb",   0, 0, },
 	/* TOK_RD */ { "rd",   0, 0, },
 	/* TOK_RE */ { "re",   0, 3, },
+	/* TOK_RF */ { "rf",   0, 0, },
 	/* TOK_RM */ { "rm",   0, 1, },
 	/* TOK_RX */ { "rx", 'R', 2, },
 	/* TOK_SP */ { "sp",   0, 0, },
@@ -331,6 +342,7 @@ static const char tokens_help[] =
 	/* TOK_RB */ "ReBoot\0"
 	/* TOK_RD */ "ReaD prompt\0"
 	/* TOK_RE */ "REmount dev[(major:minor)] mnt type [{rw|ro} [flags]]\0"
+	/* TOK_RF */ "Random Feed [file|dir]*\0"
 	/* TOK_RM */ "RM file\0"
 	/* TOK_RX */ "Remote-eXec dir cmd [args] : fork+chroot+execve\0"
 	/* TOK_SP */ "SusPend\0"
@@ -1154,6 +1166,137 @@ static int list_dir(const char *fmt, const char *dir)
 	close(fd);
 out_ret:
 	return ret;
+}
+
+/* Uses rnd->buf to feed rnd->buf_size bytes to random device opened in
+ * <rand_fd>. One bit per 16 input bytes is accounted for. The number of
+ * entropy bits added is returned.
+ */
+static int _feed_random_to_dev(int rand_fd, struct rnd *rnd)
+{
+	if (rnd->buf_size > sizeof(rnd->buf))
+		rnd->buf_size = sizeof(rnd->buf);
+	rnd->entropy_count = (rnd->buf_size + 15) / 16;
+	if (ioctl(rand_fd, RNDADDENTROPY, rnd) < 0)
+		return 0;
+	return rnd->entropy_count;
+}
+
+/* feeds <area> for <size> bytes to random opened in <rand_fd> counting one bit
+ * per 16 input bytes. The number of entropy bits added is returned.
+ */
+static int feed_random_area_to_dev(int rand_fd, const void *area, int size)
+{
+	struct rnd rnd;
+	int tot_ent = 0;
+	int ret;
+
+	while (size > 0) {
+		rnd.buf_size = sizeof(rnd.buf);
+		if (rnd.buf_size > size)
+			rnd.buf_size = size;
+		memcpy(rnd.buf, area, rnd.buf_size);
+		if (!_feed_random_to_dev(rand_fd, &rnd))
+			break;
+		tot_ent += rnd.entropy_count;
+		size -= rnd.buf_size;
+	}
+	return tot_ent;
+}
+
+/* read file/link <path> and pass its contents as entropy to rand_fd.
+ * Returns the number of bits added, possibly 0 (e.g. nothing useful)
+ * or -1 on failure.
+ */
+static int feed_random_from_file(int rand_fd, const char *path)
+{
+	struct stat statf;
+	struct rnd rnd;
+	int tot_ent = 0;
+	int size, ret;
+	int fd;
+
+	if (stat(path, &statf) == -1)
+		return -1;
+
+	tot_ent = feed_random_area_to_dev(rand_fd, &statf, sizeof(statf));
+	if (S_ISREG(statf.st_mode)) {
+		/* regular file. We use O_NONBLOCK so that /proc/kmsg works
+		 * as well. We limit ourselves to 128kB.
+		 */
+		fd = open(path, O_NONBLOCK | O_RDONLY);
+		if (fd < 0)
+			return tot_ent;
+
+		for (size = 0; size < 131072; size += ret) {
+			rnd.buf_size = read(fd, rnd.buf, sizeof(rnd.buf));
+			if (rnd.buf_size <= 0)
+				break;
+			if (!_feed_random_to_dev(rand_fd, &rnd))
+				break;
+			tot_ent += rnd.entropy_count;
+		}
+		close(fd);
+	}
+	return tot_ent;
+}
+
+/* Try to feed /dev/random with the contents of the specified dirs/files.
+ * Dirs are opened, all their entries names and stats are used for the hash
+ * (e.g useful with device trees or PCI entries), links and files are read
+ * and fed as-is. Each stat counts for one bit. Each read link or file counts
+ * for one bit every 16 bytes.
+ */
+static int feed_random_from_path(char *const *args)
+{
+	struct linux_dirent64 *d;
+	struct timeval tv;
+	char buffer[4096];
+	char path[256];
+	char *fpath;
+	int tot_ent = 0;
+	int rand_fd;
+	int pos, fd;
+	int len;
+
+	rand_fd = open("/dev/random", O_WRONLY | O_NONBLOCK);
+	if (rand_fd < 0)
+		return tot_ent;
+
+	gettimeofday(&tv, NULL);
+	tot_ent += feed_random_area_to_dev(rand_fd, &tv, sizeof(tv));
+
+	for (; *args; args++) {
+		len = my_strlcpy(path, *args, sizeof(path));
+		if (len + 2 >= sizeof(path))
+			continue;
+		path[len++] = '/';
+		path[len] = 0;
+		fpath = path + len;
+
+		fd = open(*args, O_RDONLY | O_DIRECTORY, 0);
+		if (fd < 0) {
+			/* either not found or not a directory */
+			tot_ent += feed_random_from_file(rand_fd, *args);
+			args++;
+			continue;
+		}
+
+		while ((len = getdents64(fd, (void *)buffer, sizeof(buffer))) > 0) {
+			for (pos = 0; pos < len; pos += d->d_reclen) {
+				d = (struct linux_dirent64 *)&buffer[pos];
+				if (streq(d->d_name, "kcore") || streq(d->d_name, "kallsyms") ||
+				    streq(d->d_name, "kmem")  || streq(d->d_name, "mem"))
+					continue;
+				my_strlcpy(fpath, d->d_name, path + sizeof(path) - fpath);
+				tot_ent += feed_random_from_file(rand_fd, path);
+			}
+		}
+		close(fd);
+	}
+
+	close(rand_fd);
+	return tot_ent;
 }
 
 /*
@@ -2199,6 +2342,11 @@ int main(int argc, char **argv, char **envp)
 					error_num = errno;
 					error = 1;
 				}
+				goto finish_cmd;
+			}
+			case TOK_RF: {
+				/* rf [file|dir]... : random feed from files/dirs */
+				feed_random_from_path(cfg_args + 1);
 				goto finish_cmd;
 			}
 			case TOK_RM: {

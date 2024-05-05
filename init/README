@@ -116,6 +116,9 @@ rd        [<string>]
 re        <dev> <mnt> <type> [ro|rw] [<opts>]
           Remount. Same options as mount but <dev> is ignored.
 --------------------------------------------------------------------------------
+rf        <file|dir>...
+          Read files or files found in dirs, and use them to feed the RNG.
+--------------------------------------------------------------------------------
 rm        <file>...
           Remove file(s) <file>.
 --------------------------------------------------------------------------------
