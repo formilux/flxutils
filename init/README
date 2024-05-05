@@ -216,3 +216,10 @@ Example of configuration file :
   #comment => ignore this line
   }                             # end of the conditional commands
   in /sbin/init-std             # the following init will be this /sbin/init-std
+
+When the program is not called as PID 1, as "linuxrc" nor with a "rebuild"
+argument, then the first argument will be checked for "-z". If it matches, then
+the subsequent arguments will constitute a command to be executed inline. For
+example, "init -z help" will show the help, and "init -z rd" will enter
+interactive mode. This can be useful from scripts which need to benefit from
+embedded commands.

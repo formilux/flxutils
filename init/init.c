@@ -1873,6 +1873,7 @@ int main(int argc, char **argv, char **envp)
 	int pid1, err;
 	int cfg_ok;
 	int rebuild;
+	int single_cmd = 0;
 	int token;
 	int cmd_input = INPUT_FILE;
 	char cmd_line[256]; /* one line of config from the prompt */
@@ -1943,12 +1944,13 @@ int main(int argc, char **argv, char **envp)
 	}
 
 	old_umask = umask(0);
-	cfg_ok = (read_cfg(cfg_file) == 0);
-
-	chdir("/"); /* be sure not to stay under /dev ! */
+	cfg_ok = 0;
 
 	/* do nothing if we're not called as the first process */
 	if (pid1 || linuxrc || rebuild) {
+		cfg_ok = (read_cfg(cfg_file) == 0);
+		chdir("/"); /* be sure not to stay under /dev ! */
+
 		/* check if /dev is already populated : /dev/console should exist. We
 		 * can safely ignore and overwrite /dev in case of linuxrc, reason why
 		 * we don't test the presence of /dev/console.
@@ -1995,6 +1997,27 @@ int main(int argc, char **argv, char **envp)
 			else {
 				debug("init/error : cannot stat(/)\n");
 			}
+		}
+	}
+	else {
+		/* We weren't called as linuxrc, pid1 nor rebuild. If passed
+		 * "-z" followed by at least one word, it will be processed as
+		 * a single command to be executed as if read from a file.
+		 */
+		if (argc > 2 && streq(argv[1], "-z")) {
+			int i;
+
+			cfg_line = cfg_data;
+			for (i = 2; i < argc; i++) {
+				cfg_line += my_strlcpy(cfg_line, argv[i], cfg_data + sizeof(cfg_data) - cfg_line);
+				if (cfg_line + 1 < cfg_data + sizeof(cfg_data))
+					*(cfg_line++) = i + 1 < argc ? ' ' : '\n';
+				*cfg_line = 0;
+			}
+			/* now the config is made of this unique line */
+			cfg_line = cfg_data;
+			cfg_ok = 1;
+			single_cmd = 1;
 		}
 	}
 
@@ -2229,7 +2252,7 @@ int main(int argc, char **argv, char **envp)
 			}
 
 			/* other options are reserved for pid 1/linuxrc/rebuild and prompt mode */
-			if (!pid1 && !linuxrc && !rebuild && cmd_input != INPUT_KBD) {
+			if (!pid1 && !linuxrc && !rebuild && !single_cmd && cmd_input != INPUT_KBD) {
 				debug("Command ignored since pid not 1\n");
 				error = context[brace_level].error;
 				continue;
@@ -2744,8 +2767,8 @@ int main(int argc, char **argv, char **envp)
 		debug(cfg_file); debug("\n");
 	}
 
-	if (rebuild) {
-		debug("end of rebuild\n");
+	if (rebuild || single_cmd) {
+		debug("end of rebuild or single_cmd\n");
 		/* nothing more to do */
 		return 0;
 	}
