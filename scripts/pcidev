@@ -26,6 +26,10 @@
 # <mask>. Multiple -c may be used to look for multiple classes.
 # Eg: -c 0x020000/0xffff00 for Ethernet devices.
 #E
+
+# may be loaded early
+export PATH="/sbin:/usr/sbin:/bin:/usr/bin:$PATH"
+
 MODPROBE=0
 ONLYNEW=0
 VERBOSE=0
