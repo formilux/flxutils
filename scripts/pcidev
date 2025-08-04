@@ -208,6 +208,14 @@ for device in $pcidev; do
 	done < $MAPFILE
     fi
 
+    # there may be duplicates in the list, as sometimes modprobe -q will return
+    # some. Let's dedup now. [[ ]] can compare using globbing so we'll just
+    # rebuild the list respecting order without inserting dups.
+    tmplist=$list; list=""
+    for mod in $tmplist; do
+	[[ " $list " = *" $mod "* ]] || list="$list $mod"
+    done
+
     if [ -z "$driver" ]; then
 	if [ $ONLYNEW -gt 0 ]; then
 	    if [ "$list" -a "$list" != "$oldlist" ]; then
