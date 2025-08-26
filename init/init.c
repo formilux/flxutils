@@ -128,6 +128,9 @@ static long getdents64(int fd, struct linux_dirent64 *dirp, unsigned long count)
 int pivot_root(const char *new_root, const char *put_old);
 #endif
 
+#undef alloca
+#define alloca(size)   __builtin_alloca(size)
+
 /*
  * configuration settings and convenience defines
  */
@@ -238,6 +241,7 @@ enum {
 	TOK_RF,                /* rf : random feed */
 	TOK_RM,                /* rm : remove files */
 	TOK_RX,                /* rx : execute under chroot */
+	TOK_SE,                /* se : setenv */
 	TOK_SP,                /* sp : suspend */
 	TOK_ST,                /* st : stat file existence */
 	TOK_SW,                /* sw : switch root = chdir + chroot . + reopen console */
@@ -298,6 +302,7 @@ static const struct token tokens[] = {
 	/* TOK_RF */ { "rf",   0, 0, },
 	/* TOK_RM */ { "rm",   0, 1, },
 	/* TOK_RX */ { "rx", 'R', 2, },
+	/* TOK_SE */ { "se", 'S', 1, },
 	/* TOK_SP */ { "sp",   0, 0, },
 	/* TOK_ST */ { "st",   0, 1, },
 	/* TOK_SW */ { "sw",   0, 1, },
@@ -348,6 +353,7 @@ static const char tokens_help[] =
 	/* TOK_RF */ "Random Feed [file|dir]*\0"
 	/* TOK_RM */ "RM file\0"
 	/* TOK_RX */ "Remote-eXec dir cmd [args] : fork+chroot+execve\0"
+	/* TOK_SE */ "SetEnv name [value]\0"
 	/* TOK_SP */ "SusPend\0"
 	/* TOK_ST */ "STat file\0"
 	/* TOK_SW */ "SWitchroot root\0"
@@ -734,6 +740,44 @@ static unsigned long base8_to_ul_lim(const char *ascii, unsigned int limit)
 static unsigned long base8_to_ul(const char *ascii)
 {
 	return base8_to_ul_lim(ascii, ~0);
+}
+
+/* Measures the environment size in total bytes and number of variables.
+ * Trailing zeroes are accounted for in the number of bytes so that the result
+ * can be used to allocate a copy of this environment. Similarly the trailing
+ * NULL entry is accounted for in the number of entries.
+ */
+static void env_size(char **envp, int *bytes, int *entries)
+{
+	*bytes = 0;
+	*entries = 1;
+	while (*envp != NULL) {
+		*bytes += my_strlen(*envp) + 1;
+		(*entries)++;
+		envp++;
+	}
+}
+
+/* duplicate old_env into new_env and append to it variable <name>=<value>.
+ * The <new_env> must have been allocated large enough to hold <old_env>+1
+ * entries (+NULL) and <env_store> must be large enough to hold <old_env>
+ * + the new variable (name+value+2). The required sizes before modification
+ * can be obtained by env_size() above.
+ */
+static void env_dup_and_append(char **new_env, char **old_env, char *env_store, const char *name, const char *value)
+{
+	*new_env = env_store;
+	while (*old_env != NULL) {
+		env_store = addcst(env_store, *(old_env++)) + 1;
+		*(++new_env) = env_store;
+	}
+	/* add our new variable */
+	env_store = addcst(env_store, name);
+	env_store = addchr(env_store, '=');
+	env_store = addcst(env_store, value);
+
+	/* and the final NULL */
+	*(++new_env) = 0;
 }
 
 /* flushes stdin and waits for it to be done */
@@ -1885,6 +1929,7 @@ int main(int argc, char **argv, char **envp)
 	char *cfg_file;
 	char *ret_msg = NULL;
 	int brace_level, kbd_level, run_level;
+	int env_bytes, env_entries;
 	char *conf_init, *force_init;
 	char missing_arg_msg[] = "0 args needed\n";
 	struct {
@@ -2215,6 +2260,24 @@ int main(int argc, char **argv, char **envp)
 				}
 				error = (*env == NULL);
 				goto finish_cmd;
+			} else if (token == TOK_SE) {
+				/* se name [value]: setenv name [value].
+				 * first we need to remove an hypothetical occurrence of the variable,
+				 * then duplicate the environment in the stack and append the new
+				 * variable.
+				 */
+				my_getenv(envp, cfg_args[1], 1);
+				if (cfg_args[1] && cfg_args[2]) {
+					int name_len  = my_strlen(cfg_args[1]);
+					int value_len = my_strlen(cfg_args[2]);
+					char *env_store, **new_envp;
+
+					env_size(envp, &env_bytes, &env_entries);
+					new_envp   = alloca((env_entries + 1) * sizeof(*new_envp));
+					env_store  = alloca(env_bytes + name_len + value_len + 2); // name=val\0
+					env_dup_and_append(new_envp, envp, env_store, cfg_args[1], cfg_args[2]);
+					envp = new_envp;
+				}
 			} else if (token == TOK_EQ) {
 				/* eq str1 str2 : compare two strings (possibly containing variables).
 				 * The result is OK if identical, otherwise NOK.
