@@ -471,6 +471,25 @@ static unsigned long my_atoul(const char *s)
 	return res;
 }
 
+/* reads the digits in <s>, stores them as a number in <ret> and
+ * returns the pointer to the first non-digit character.
+ */
+static char *my_atoull_next(char *s, unsigned long long *ret)
+{
+	unsigned long long res = 0;
+	unsigned long long digit;
+
+	while (*s) {
+		digit = *s - '0';
+		if (digit > 9)
+			break;
+		res = res * 10ULL + digit;
+		s++;
+	}
+	*ret = res;
+	return s;
+}
+
 static int streq(const char *str1, const char *str2)
 {
 	char c1;
