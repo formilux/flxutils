@@ -780,6 +780,29 @@ static void env_dup_and_append(char **new_env, char **old_env, char *env_store, 
 	*(++new_env) = 0;
 }
 
+/* opens file <file> and reads up to <size> bytes from it into <buffer>, then
+ * closes the file and returns the number of bytes read, or <0 on error, in
+ * which case error_num will be set to errno. If <size> is at least 1, a
+ * trailing zero is appended, even if it means truncating that file.
+ */
+static int read_from_file(const char *file, char *buffer, int size)
+{
+	int fd, len;
+
+	fd = open(file, O_RDONLY, 0);
+	if (fd == -1) {
+		error_num = errno;
+		return -1;
+	}
+
+	len = read(fd, buffer, size - 1);
+	error_num = errno;
+	close(fd);
+	if (len >= 0)
+		buffer[len] = 0;
+	return len;
+}
+
 /* flushes stdin and waits for it to be done */
 static void flush_stdin()
 {
@@ -1358,24 +1381,14 @@ static int feed_random_from_path(char *const *args)
 static char *get_dev_type()
 {
 	/* scan /proc/mounts for the best match for /dev */
-	int fd;
 	int len;
 	int best;
 	char *ptr, *end, *mnt, *match;
 
-	if ((fd = open("/proc/mounts", O_RDONLY, 0)) == -1) {
-		error_num = errno;
-		return NULL;
-	}
-
-	len = read(fd, mounts, sizeof(mounts) - 1);
-	error_num = errno;
-	close(fd);
-	if (len <= 0)
+	if ((len = read_from_file("/proc/mounts", mounts, sizeof(mounts))) <= 0)
 		return NULL;
 
 	end = mounts + len;
-	*end = 0;
 
 	best = 0;
 	for (ptr = mounts; ptr < end; ptr++) {
@@ -1419,18 +1432,9 @@ char *find_arg(char *arg)
 
 	/* read cmdline the first time */
 	if (cmdline_len <= 0) {
-		int fd;
-
-		if ((fd = open("/proc/cmdline", O_RDONLY, 0)) == -1)
+		if ((cmdline_len = read_from_file("/proc/cmdline", cmdline, sizeof(cmdline))) <= 0)
 			return NULL;
-
-		cmdline_len = read(fd, cmdline, sizeof(cmdline)-1);
-		error_num = errno;
-		close(fd);
-		if (cmdline_len <= 0)
-			return NULL;
-
-		cmdline[cmdline_len++] = 0;
+		cmdline_len++; // include the trailing zero
 	}
 
 	/* search for the required arg in cmdline */
@@ -1474,18 +1478,13 @@ char *find_arg(char *arg)
  */
 static int read_cfg(char *cfg_file)
 {
-	int cfg_fd;
 	int cfg_size;
 
 	if (cfg_line == NULL) {
-		if (((cfg_fd = open(cfg_file, O_RDONLY, 0)) == -1) ||
-		    ((cfg_size = read(cfg_fd, cfg_data, sizeof(cfg_data) - 1)) == -1)) {
-			error_num = errno;
+		cfg_size = read_from_file(cfg_file, cfg_data, sizeof(cfg_data));
+		if (cfg_size < 0)
 			return -1;
-		}
-		close(cfg_fd);
 		cfg_line = cfg_data;
-		cfg_data[cfg_size] = 0;
 	}
 	return 0;
 }
