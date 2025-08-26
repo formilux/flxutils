@@ -216,6 +216,7 @@ enum {
 	TOK_CP,                /* cp : copy file */
 	TOK_CR,                /* cr : chroot (without chdir) */
 	TOK_EC,                /* ec : echo */
+	TOK_EN,                /* en : env */
 	TOK_EQ,                /* eq : compare two strings */
 	TOK_EX,                /* ex : execute */
 	TOK_FI,                /* fi : make a fifo */
@@ -275,6 +276,7 @@ static const struct token tokens[] = {
 	/* TOK_CP */ { "cp",   0, 2, },
 	/* TOK_CR */ { "cr",   0, 1, },
 	/* TOK_EC */ { "ec",   0, 0, },
+	/* TOK_EN */ { "en",   0, 0, },
 	/* TOK_EQ */ { "eq",   0, 2, },
 	/* TOK_EX */ { "ex", 'E', 1, },
 	/* TOK_FI */ { "fi", 'F', 4, },
@@ -324,6 +326,7 @@ static const char tokens_help[] =
 	/* TOK_CP */ "CP src dst\0"
 	/* TOK_CR */ "ChRoot dir\0"
 	/* TOK_EC */ "ECho string\0"
+	/* TOK_EN */ "ENv : show environment\0"
 	/* TOK_EQ */ "EQ str1 str2 : compare strings\0"
 	/* TOK_EX */ "EXec cmd [args] : fork+execve\0"
 	/* TOK_FI */ "FIfo mode uid gid name\0"
@@ -2196,7 +2199,7 @@ int main(int argc, char **argv, char **envp)
 					conf_init = cfg_args[1];
 					continue;
 				}
-			} else if (token == TOK_TE) {
+			} else if (token == TOK_TE || token == TOK_EN) {
 				/* te <var=val> : compare an environment variable to a value.
 				 * In fact, look for the exact assignment in the environment.
 				 * The result is OK if found, NOK if not.
@@ -2204,8 +2207,9 @@ int main(int argc, char **argv, char **envp)
 				char **env = envp;
 
 				while (*env) {
-					//printf("testing <%s> against <%s>\n", cfg_args[1], *env);
-					if (streq(*env, cfg_args[1]))
+					if (token == TOK_EN)
+						println(*env);
+					else if (streq(*env, cfg_args[1]))
 						break;
 					env++;
 				}
