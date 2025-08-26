@@ -143,6 +143,7 @@ int pivot_root(const char *new_root, const char *put_old);
 #define MAX_CMDLINE_LEN 512
 #define MAX_BRACE_LEVEL	10
 #define MAX_MNT_SIZE	1024
+#define MAX_PART_SIZE	16384
 
 /* well-known UID/GID */
 #define UID_ROOT        0
@@ -199,6 +200,16 @@ struct rnd {
 	char buf[1024];
 };
 
+struct blkdev {
+	char *name;
+	unsigned int major;
+	unsigned int minor;
+	unsigned long long size; // in kB
+	struct blkdev *next;
+	struct blkdev *part;
+	char type[16]; // FS type
+};
+
 /* possible states for variable parsing */
 enum {
 	VAR_NONE = 0,
@@ -228,6 +239,7 @@ enum {
 	TOK_IN,                /* in : set init program */
 	TOK_LN,                /* ln : make a symlink */
 	TOK_LO,                /* lo : losetup */
+	TOK_LP,                /* lp : list partitions */
 	TOK_LS,                /* ls : list files in DIR $1 */
 	TOK_MA,                /* ma : set umask */
 	TOK_MD,                /* md : mkdir */
@@ -289,6 +301,7 @@ static const struct token tokens[] = {
 	/* TOK_IN */ { "in", 'I', 1, },
 	/* TOK_LN */ { "ln", 'L', 2, },
 	/* TOK_LO */ { "lo", 'l', 2, },
+	/* TOK_LP */ { "lp",   0, 0, },
 	/* TOK_LS */ { "ls",   0, 0, },
 	/* TOK_MA */ { "ma", 'U', 1, },
 	/* TOK_MD */ { "md", 'D', 1, },
@@ -340,6 +353,7 @@ static const char tokens_help[] =
 	/* TOK_IN */ "INit path\0"
 	/* TOK_LN */ "LN target link : symlink\0"
 	/* TOK_LO */ "LOsetup /dev/loopX file\0"
+	/* TOK_LP */ "ListPartitions\0"
 	/* TOK_LS */ "LS [-e|-l] dir\0"
 	/* TOK_MA */ "uMAsk umask\0"
 	/* TOK_MD */ "MkDir path [mode]\0"
@@ -395,11 +409,13 @@ static int cmdline_len;
 static char *cst_str[MAX_FIELDS];
 static char *var_str[MAX_FIELDS];
 static char mounts[MAX_MNT_SIZE];
+static char parts[MAX_PART_SIZE]; // /proc/partitions
 static struct dev_varstr var[MAX_FIELDS];
 static int error;       /* an error has emerged from last operation */
 static int error_num;   /* a copy of errno when error != 0 */
 static int linuxrc;     /* non-zero if we were called as 'linuxrc' */
 static char tmp_path[MAXPATHLEN];
+static struct blkdev *blkdevs;
 
 
 /*
@@ -1932,6 +1948,60 @@ static void multidev(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t m
 	}
 }
 
+/* adds a blkdev to an existing list (part or next). Appends to the end of the
+ * last ->next
+ */
+static void blkdev_add(struct blkdev **root, struct blkdev *dev)
+{
+	while (*root)
+		root = &(*root)->next;
+	*root = dev;
+}
+
+/* finds from the root where a device name should be attached:
+ *  - if the name does not end with a digit, it's a device
+ *  - if the candidate's name ends in a digit and the new one has the same name
+ *    followed by 'p' and digits, it's a partition of that one;
+ *  - if the candidate's name does not end in a digit and the new one has the
+ *    same name followed only by digits, it's a partition of that one;
+ *  - if a candidate has exactly the same name, the device was already added,
+ *    so NULL is returned.
+ *  - otherwise it's a new device.
+ * Note that parents must be added before partitions, which is already the case
+ * in /proc/partitions.
+ */
+static struct blkdev **blkdev_find_parent(struct blkdev **root, const char *name)
+{
+	int namelen = my_strlen(name);
+	int commlen;
+
+	if (namelen && (unsigned char)(name[namelen - 1] - '0') > 9)
+		return &(*root)->next; // different device
+
+	while (*root) {
+		for (commlen = 0; name[commlen] && name[commlen] == (*root)->name[commlen]; commlen++)
+			;
+		if (commlen && commlen == my_strlen((*root)->name)) {
+			if (commlen == namelen)
+				return NULL; // exact match, already there
+
+			if ((unsigned char)((*root)->name[commlen-1] - '0') <= 9) {
+				/* root ends with digit */
+				if (name[commlen] == 'p' && (unsigned char)(name[commlen + 1] - '0') <= 9)
+					return &(*root)->part; // matches with 'pXX' after digit
+			} else {
+				/* root ends without digit */
+				if ((unsigned char)(name[commlen] - '0') <= 9)
+					return &(*root)->part; // matches with extra digits
+			}
+			/* does not match (e.g. sda1 vs sda11) */
+		}
+		root = &(*root)->next;
+	}
+	/* new device, append to the end */
+	return root;
+}
+
 int main(int argc, char **argv, char **envp)
 {
 	int old_umask;
@@ -2388,6 +2458,118 @@ int main(int argc, char **argv, char **envp)
 					debug("<S>ymlink : symlink() failed\n");
 				}
 				goto finish_cmd;
+			case TOK_LP: {
+				/* lp: list partitions. */
+				struct blkdev **parent, *spare = NULL;
+				struct blkdev *mbr, *part;
+				unsigned long long major, minor, size;
+				char linebuf[256];
+				char *dev;
+				char *ptr;
+
+				if (read_from_file("/proc/partitions", parts, sizeof(parts)) == -1) {
+					error = 1;
+					debug("ListPart: cannot read /proc/partitions\n");
+					goto finish_cmd;
+				}
+
+				/* input format:
+				 * major minor  #blocks  name
+				 *
+				 *    1        0      16384 ram0
+				 *    1        1      16384 ram1
+				 */
+				for (ptr = parts; *ptr; ) {
+					if (!spare)
+						spare = alloca(sizeof(*spare));
+
+					/* skip spaces */
+					while (*ptr == ' ')
+						ptr++;
+					if (!*ptr)
+						break;
+					/* skip empty lines */
+					if (*ptr == '\n') {
+						ptr++;
+						continue;
+					}
+					/* skip title */
+					if ((unsigned char)(*ptr - '0') > 9) {
+						ptr++;
+						continue;
+					}
+
+					/* OK the line starts with a digit, it interests us */
+					ptr = my_atoull_next(ptr, &major);
+					while (*ptr == ' ')
+						ptr++;
+
+					ptr = my_atoull_next(ptr, &minor);
+					while (*ptr == ' ')
+						ptr++;
+
+					ptr = my_atoull_next(ptr, &size);
+					while (*ptr == ' ')
+						ptr++;
+
+					dev = ptr;
+					while (*ptr && *ptr != '\n')
+						ptr++;
+					if (*ptr)
+						*(ptr++) = 0;
+					/* OK, ptr now points to the next line and we
+					 * have all our elements in major/minor/size/dev.
+					 */
+					//printf("major=%d minor=%d size=%u dev=%s\n", (int)major, (int)minor, (int)size, dev);
+					parent = blkdev_find_parent(&blkdevs, dev);
+					if (!parent)
+						continue; // already there
+					/* the parent is the start of a sub-tree where to attach
+					 * that new device, let's fill the struct and attach it.
+					 */
+					spare->next = spare->part = NULL;
+					spare->major = major;
+					spare->minor = minor;
+					spare->size = size;
+					spare->name = alloca(ptr - dev + 1);
+					addcst(spare->name, dev);
+					spare->type[0] = 0;
+					blkdev_add(parent, spare);
+					spare = NULL;
+				}
+
+				/* only list devices that are or contain a partition */
+				for (mbr = blkdevs; mbr; mbr = mbr->next) {
+					if (!mbr->part)
+						continue;
+					//printf("%s [%llu MB] %u:%u\n", mbr->name, mbr->size / 1024, mbr->major, mbr->minor);
+					ptr = linebuf;
+					ptr = addcst(ptr, mbr->name);
+					ptr = addchr(ptr, ' ');
+					ptr = addchr(ptr, '[');
+					ptr = adduint(ptr, mbr->size / 1024);
+					ptr = addcst(ptr, " MB]\n");
+					print(linebuf);
+
+					for (part = mbr->part; part; part = part->next) {
+						//printf("%c- %s [%llu MB] %u:%u\n",
+						//       (part->next) ? '|' : '`',
+						//       part->name, part->size / 1024, part->major, part->minor);
+						ptr = linebuf;
+						ptr = addchr(ptr, part->next ? '|' : '`');
+						ptr = addchr(ptr, '-');
+						ptr = addchr(ptr, ' ');
+						ptr = addcst(ptr, part->name);
+						ptr = addchr(ptr, ' ');
+						ptr = addchr(ptr, '[');
+						ptr = adduint(ptr, part->size / 1024);
+						ptr = addcst(ptr, " MB]\n");
+						print(linebuf);
+					}
+				}
+
+				goto finish_cmd;
+			}
 			case TOK_CA:
 			case TOK_CP: {
 				/* ca <src> : cat a file to stdout */
