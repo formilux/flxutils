@@ -200,6 +200,13 @@ struct rnd {
 	char buf[1024];
 };
 
+/* flags for blkdev->flags below */
+#define BLKD_F_IGNORE         0x00000001
+#define BLKD_F_DETECTED       0x00000002 // partition was already detected
+#define BLKD_F_FLASH          0x00000004 // partition could be a /flash
+#define BLKD_F_IMAGE1         0x00000008 // partition matches the first of 2 images
+#define BLKD_F_IMAGE2         0x00000010 // partition matches the second of 2 images
+
 struct blkdev {
 	char *name;
 	unsigned int major;
@@ -207,6 +214,8 @@ struct blkdev {
 	unsigned long long size; // in kB
 	struct blkdev *next;
 	struct blkdev *part;
+	unsigned int flags; // BLKD_F_xxx
+	unsigned int pref;  // 0+: position in preference list
 	char type[16]; // FS type
 };
 
@@ -234,6 +243,7 @@ enum {
 	TOK_EQ,                /* eq : compare two strings */
 	TOK_EX,                /* ex : execute */
 	TOK_FI,                /* fi : make a fifo */
+	TOK_FP,                /* fp : find partitions */
 	TOK_HA,                /* ha : halt */
 	TOK_HE,                /* he : help */
 	TOK_IN,                /* in : set init program */
@@ -297,6 +307,7 @@ static const struct token tokens[] = {
 	/* TOK_EQ */ { "eq",   0, 2, },
 	/* TOK_EX */ { "ex", 'E', 1, },
 	/* TOK_FI */ { "fi", 'F', 4, },
+	/* TOK_FP */ { "fp",   0, 1, },
 	/* TOK_HA */ { "ha",   0, 0, },
 	/* TOK_HE */ { "he", '?', 0, },
 	/* TOK_IN */ { "in", 'I', 1, },
@@ -350,6 +361,7 @@ static const char tokens_help[] =
 	/* TOK_EQ */ "EQ str1 str2 : compare strings\0"
 	/* TOK_EX */ "EXec cmd [args] : fork+execve\0"
 	/* TOK_FI */ "FIfo mode uid gid name\0"
+	/* TOK_FP */ "FindPart ${img} [fstype...]: (sets {chosen,second}_{part,type})\0"
 	/* TOK_HA */ "HAlt\0"
 	/* TOK_HE */ "HElp [cmd]\0"
 	/* TOK_IN */ "INit path\0"
@@ -783,9 +795,10 @@ static unsigned long base8_to_ul(const char *ascii)
 /* Measures the environment size in total bytes and number of variables.
  * Trailing zeroes are accounted for in the number of bytes so that the result
  * can be used to allocate a copy of this environment. Similarly the trailing
- * NULL entry is accounted for in the number of entries.
+ * NULL entry is accounted for in the number of entries. It also returns the
+ * pointer to the final NULL (the environment's tail).
  */
-static void env_size(char **envp, int *bytes, int *entries)
+static char **env_size(char **envp, int *bytes, int *entries)
 {
 	*bytes = 0;
 	*entries = 1;
@@ -794,6 +807,22 @@ static void env_size(char **envp, int *bytes, int *entries)
 		(*entries)++;
 		envp++;
 	}
+	return envp;
+}
+
+/* Finds the pointers to the tail of the environment, i.e. the first byte after
+ * the final 0 is set into env_store, and the pointer to the final NULL is
+ * returned. Note that if the environment is totally empty, env_store will be
+ * assigned a NULL.
+ */
+static char **env_get_tail(char **envp, char **env_store)
+{
+	*env_store = NULL;
+	while (*envp != NULL) {
+		*env_store = *envp;
+		envp++;
+	}
+	return envp;
 }
 
 /* duplicate <old_env> into <new_env> using <env_store> for the contents, and
@@ -2064,6 +2093,9 @@ static void blkdev_find_part_type(struct blkdev *part)
 	uint32_t sig32;
 	int len;
 
+	if (part->flags & BLKD_F_DETECTED)
+		goto leave; // detection already done
+
 	if (part->size < 1024)
 		goto leave; // less than 1MB is not for us
 
@@ -2146,6 +2178,7 @@ static void blkdev_find_part_type(struct blkdev *part)
 	goto leave;
  got_it:
 	my_strlcpy(part->type, type, sizeof(part->type));
+	part->flags |= BLKD_F_DETECTED;
  leave:
 	return;
 }
@@ -2614,12 +2647,13 @@ int main(int argc, char **argv, char **envp)
 					debug("<S>ymlink : symlink() failed\n");
 				}
 				goto finish_cmd;
-			case TOK_LP: {
-				/* lp: list partitions. */
+			case TOK_FP:    /* fp: find partitions. */
+			case TOK_LP: {	/* lp: list partitions. */
 				struct blkdev **parent, *spare = NULL;
-				struct blkdev *mbr, *part;
+				struct blkdev *mbr, *part, *part1, *part2;
 				unsigned long long major, minor, size;
 				char linebuf[256];
+				int arg_pos, best_pos = MAX_CFG_ARGS;
 				char *dev;
 				char *ptr;
 
@@ -2689,44 +2723,200 @@ int main(int argc, char **argv, char **envp)
 					spare->size = size;
 					spare->name = alloca(ptr - dev + 1);
 					addcst(spare->name, dev);
+					spare->flags = 0;
 					spare->type[0] = 0;
 					blkdev_add(parent, spare);
 					spare = NULL;
 				}
 
-				/* only list devices that are or contain a partition */
-				for (mbr = blkdevs; mbr; mbr = mbr->next) {
-					if (!mbr->part)
-						continue;
-					//printf("%s [%llu MB] %u:%u\n", mbr->name, mbr->size / 1024, mbr->major, mbr->minor);
-					ptr = linebuf;
-					ptr = addcst(ptr, mbr->name);
-					ptr = addchr(ptr, ' ');
-					ptr = addchr(ptr, '[');
-					ptr = adduint(ptr, mbr->size / 1024);
-					ptr = addcst(ptr, " MB]\n");
-					print(linebuf);
-
-					for (part = mbr->part; part; part = part->next) {
-						blkdev_find_part_type(part);
-						//printf("%c- %s [%llu MB] %u:%u\n",
-						//       (part->next) ? '|' : '`',
-						//       part->name, part->size / 1024, part->major, part->minor);
+				if (token == TOK_LP) {
+					/* only list devices that are or contain a partition */
+					for (mbr = blkdevs; mbr; mbr = mbr->next) {
+						if (!mbr->part)
+							continue;
+						//printf("%s [%llu MB] %u:%u\n", mbr->name, mbr->size / 1024, mbr->major, mbr->minor);
 						ptr = linebuf;
-						ptr = addchr(ptr, part->next ? '|' : '`');
-						ptr = addchr(ptr, '-');
-						ptr = addchr(ptr, ' ');
-						ptr = addcst(ptr, part->name);
+						ptr = addcst(ptr, mbr->name);
 						ptr = addchr(ptr, ' ');
 						ptr = addchr(ptr, '[');
-						ptr = adduint(ptr, part->size / 1024);
-						ptr = addcst(ptr, " MB]");
-						ptr = addchr(ptr, ' ');
-						ptr = addcst(ptr, part->type);
-						println(linebuf);
+						ptr = adduint(ptr, mbr->size / 1024);
+						ptr = addcst(ptr, " MB]\n");
+						print(linebuf);
+
+						for (part = mbr->part; part; part = part->next) {
+							blkdev_find_part_type(part);
+							//printf("%c- %s [%llu MB] %u:%u\n",
+							//       (part->next) ? '|' : '`',
+							//       part->name, part->size / 1024, part->major, part->minor);
+							ptr = linebuf;
+							ptr = addchr(ptr, part->next ? '|' : '`');
+							ptr = addchr(ptr, '-');
+							ptr = addchr(ptr, ' ');
+							ptr = addcst(ptr, part->name);
+							ptr = addchr(ptr, ' ');
+							ptr = addchr(ptr, '[');
+							ptr = adduint(ptr, part->size / 1024);
+							ptr = addcst(ptr, " MB]");
+							ptr = addchr(ptr, ' ');
+							ptr = addcst(ptr, part->type);
+							println(linebuf);
+						}
+					}
+					goto finish_cmd;
+				}
+
+				/* This is the "fp" command. It takes an image name
+				 * (possibly empty, defaulting to active), and an
+				 * optional list of FS types to limit to. We want to
+				 * find a device that has two consecutive parts of
+				 * the exact same size at at least 16 MB, located
+				 * somewhere after at least one ext2 partition of
+				 * at least 8MB (/flash). One of the partitions must
+				 * be of one of the specified types (defaulting to
+				 * squashfs). We'll first eliminate devices whose
+				 * partition layout doesn't match, then check the
+				 * FS types for remaining candidates, then pick the
+				 * first device in the table (since they are in
+				 * detection order). "best_pos" equals 0 when the
+				 * first (or default) choice is found.
+				 */
+				part = part1 = part2 = NULL;
+				for (mbr = blkdevs; mbr && best_pos; mbr = mbr->next) {
+					if (!mbr->part || (mbr->flags & BLKD_F_IGNORE))
+						continue;
+
+					for (part = mbr->part; part && best_pos; part = part->next) {
+						if (part->size < 8192)
+							continue;
+						/* we have one 8MB part, check what follows */
+						for (part1 = part->next; part1 && best_pos; part1 = part1->next) {
+							if (part1->size < 16384)
+								continue;
+							part2 = part1->next;
+							if (!part2 || part2->size < 16384)
+								continue;
+							if (part1->size != part2->size)
+								continue;
+							/* here we have one 8+MB part followed by two
+							 * equally sized parts or at least 16MB, that's
+							 * a good candidate.
+							 */
+							blkdev_find_part_type(part);
+							blkdev_find_part_type(part1);
+							blkdev_find_part_type(part2);
+							if (!streqlen(part->type, "ext", 3))
+								continue;
+							part->flags |= BLKD_F_FLASH; // part may be /flash
+							arg_pos = 0; // anticipate no args
+							if (cfg_args[2] && *cfg_args[2]) {
+								/* one or multiple FS type(s) were listed, only compare against these ones */
+								for (arg_pos = 0; cfg_args[arg_pos + 2]; arg_pos++) {
+									if (!streq(part1->type, cfg_args[arg_pos + 2]) &&
+									    !streq(part2->type, cfg_args[arg_pos + 2]))
+										continue;
+
+									part1->flags |= BLKD_F_IMAGE1;
+									part1->pref = arg_pos;
+									part2->flags |= BLKD_F_IMAGE2;
+									part2->pref = arg_pos;
+									if (arg_pos < best_pos)
+										best_pos = arg_pos;
+									break;
+								}
+							}
+							else if (streq(part1->type, "squashfs") || streq(part2->type, "squashfs")) {
+								/* default type is squashfs */
+								part1->flags |= BLKD_F_IMAGE1;
+								part1->pref = arg_pos;
+								part2->flags |= BLKD_F_IMAGE2;
+								part2->pref = arg_pos;
+								if (arg_pos < best_pos)
+									best_pos = arg_pos;
+							}
+						}
 					}
 				}
 
+				/* Now we've scanned all candidate partitions. If we've
+				 * found any, as reflected by best_pos being lower than
+				 * the max number of choices, we'll check which ones we've
+				 * marked as image1/image2 with that scrore, and based on
+				 * cfg_args[1], we'll set chosen_part or second_part to
+				 * point to one or the other. For now part1/part2 are
+				 * properly set.
+				 */
+				if (best_pos < MAX_CFG_ARGS) {
+					char *env_store, **new_envp, **env_tail;
+					int prev_env_bytes, prev_entries;
+					int alloc_sz;
+
+					part = part1 = part2 = NULL;
+					for (mbr = blkdevs; mbr && (!part1 || !part2); mbr = mbr->next) {
+						if (!mbr->part || (mbr->flags & BLKD_F_IGNORE))
+							continue;
+
+						for (part = mbr->part; part && (!part1 || !part2); part = part->next) {
+							if (part->pref != best_pos)
+								continue;
+							if (!part1 && (part->flags & BLKD_F_IMAGE1))
+								part1 = part;
+							else if (!part2 && (part->flags & BLKD_F_IMAGE2))
+								part2 = part;
+						}
+					}
+					/* Now part1 and part2 are set.
+					 * By convention we'll use part1 as chosen and part2 as second,
+					 * se we need to swap them if img==backup/image2.
+					 */
+					if (streq(cfg_args[1], "backup") || streq(cfg_args[1], "image2")) {
+						part = part1;
+						part1 = part2;
+						part2 = part;
+					}
+
+					//printf("setting chosen=%s(%s) second=%s(%s)\n", part1->name, part1->type, part2->name, part2->type);
+					/* Here by construction we cannot have part1 or part2 NULL.
+					 * We'll have to set chosen_part and second_part based on these
+					 * names, in the environment. We know that we'll set both
+					 * variables anyway so we can compute by how much we have to
+					 * extend the environment (2*"/dev/" + each part name + vars
+					 * names + "=" + "\0").
+					 */
+					alloc_sz  =
+						12 /* "chosen_part=" */ + 12 /* "second_part=" */ +
+						12 /* "chosen_type=" */ + 12 /* "second_type=" */ +
+						2 * (5 /* "/dev/" */ + 5 /* "/dev/" */ + 1 /* \0 */) +
+						2 /* \0 for types */ +
+						my_strlen(part1->name) + my_strlen(part2->name) +
+						my_strlen(part1->type) + my_strlen(part2->type);
+
+					/* check how much was allocated before dropping vars */
+					env_size(envp, &prev_env_bytes, &prev_entries);
+					my_getenv(envp, "chosen_part", 1);
+					my_getenv(envp, "chosen_type", 1);
+					my_getenv(envp, "second_part", 1);
+					my_getenv(envp, "second_type", 1);
+					env_size(envp, &env_bytes, &env_entries);
+					env_tail = env_get_tail(envp, &env_store);
+
+					if (env_bytes + alloc_sz > prev_env_bytes ||
+					    env_entries + 4 > prev_entries ||
+					    !env_store) {
+						/* need to expand the environment */
+						new_envp  = alloca((env_entries + 4) * sizeof(*new_envp));
+						env_store = alloca(env_bytes + alloc_sz);
+						env_tail  = env_dup(new_envp, envp, &env_store);
+						envp = new_envp;
+					}
+
+					addcst(addcst(tmp_path, "/dev/"), part1->name);
+					env_tail = env_append_var(env_tail, &env_store, "chosen_part", tmp_path);
+					env_tail = env_append_var(env_tail, &env_store, "chosen_type", part1->type);
+
+					addcst(addcst(tmp_path, "/dev/"), part2->name);
+					env_tail = env_append_var(env_tail, &env_store, "second_part", tmp_path);
+					env_tail = env_append_var(env_tail, &env_store, "second_type", part2->type);
+				}
 				goto finish_cmd;
 			}
 			case TOK_CA:
