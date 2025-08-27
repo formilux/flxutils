@@ -2005,6 +2005,102 @@ static struct blkdev **blkdev_find_parent(struct blkdev **root, const char *name
 	return root;
 }
 
+/* try to detect and fill the FS type of this partition. We won't try to create
+ * the devices, they are expected to already be there.
+ */
+static void blkdev_find_part_type(struct blkdev *part)
+{
+	uint8_t buf[1536 + 1]; /* normally suffices */
+	char *path, *type;
+	uint32_t sig32;
+	int len;
+
+	if (part->size < 1024)
+		goto leave; // less than 1MB is not for us
+
+	path = addcst(tmp_path, "/dev/");
+	path = addcst(path, part->name);
+	len = read_from_file(tmp_path, (char*)buf, sizeof(buf));
+	if (len < sizeof(buf) - 1)
+		goto leave; // short/failed read
+
+	/* first, check the 4 first bytes which say a lot about most
+	 * FS. We process them in big endian because that's easier to
+	 * visually match against hex dumps during testing.
+	 */
+	type = NULL;
+	sig32 = (buf[0] * 16777216U) + (buf[1] * 65536) + (buf[2] * 256) + buf[3];
+	switch (sig32) {
+	case 0xffffffff: type = "empty";    break;
+	case 0x1f8b0800: type = "gzip";     break;
+	case 0xfd377a58: type = "xz";       break;
+	case 0x68737173: // "hsqs"
+		type = buf[0x1c] >= 4 ? "squashfs" : // v4
+			"squashfs3"; // v2 (0x2) or v3 (0x3)
+		break;
+	case 0x42534658: type = "xfs";      break; // "XFSB"
+	case 0x55424923: type = "ubi";      break; // only on mtd
+	case 0x31181006: type = "ubifs";    break; // only on mtd
+	case 0x27051956: // uimage/ukernel/uinitrd
+		type = (buf[0x1e] == 2) ? "ukernel" :
+			(buf[0x1e] == 3) ? "uinitrd" :
+			"uimage";
+		break;
+	case 0x1985e001: // "jffs2:dirent"
+	case 0x851901e0:
+	case 0x1985e002: // "jffs2:inode"
+	case 0x851902e0:
+	case 0x19852003: // "jffs2:clean"
+	case 0x85190320:
+	case 0x19852004: // "jffs2:padding"
+	case 0x85190420:
+	case 0x19852006: // "jffs2:summary"
+	case 0x85190620:
+	case 0x1985e008: // "jffs2:xattr"
+	case 0x851908e0:
+	case 0x1985e009: // "jffs2:xref"
+	case 0x851909e0:
+		type = "jffs2";
+		break;
+	}
+
+	if (type)
+		goto got_it;
+
+	/* let's now check for the ext2/3/4 family (0xef53) */
+	if (buf[0x438] == 0x53 && buf[0x439] == 0xef) {
+		type = (buf[0x45c] & 0x04) ? // has_journal
+			(buf[0x460] & 0x40) ? // extent
+			"ext4" : "ext3"	: "ext2";
+		goto got_it;
+	}
+
+	/* fat / mbr ? we'd have 0x55 AA at 0x1FE. */
+	if (buf[0x1fe] == 0x55 && buf[0x1ff] == 0xaa) {
+		/* FAT starts with a boot sector made of an in-sector
+		 * jump opcode (0xEB + dist or 0xE9 + dist lower than
+		 * 0x200). It also (almost?) always has 512 bytes per
+		 * sector (@0xB), has 2 FATs (@0x10) and a type (@0x15)
+		 * in F0..FF. Otherwise it's just an MBR.
+		 */
+		if ((buf[0] == 0xeb || (buf[0] == 0xE9 && buf[2] <= 0x1)) && // short/near jump
+		    (buf[0xb] == 0 && buf[0xc] == 2) && // 512 bytes per sector
+		    (buf[0x10] == 2) && // 2 FATs
+		    (unsigned char)(buf[0x15] - 0xf0) <= 0x0F)
+			type = "vfat";
+		else
+			type = "mbr";
+		goto got_it;
+	}
+
+	/* not found */
+	goto leave;
+ got_it:
+	my_strlcpy(part->type, type, sizeof(part->type));
+ leave:
+	return;
+}
+
 int main(int argc, char **argv, char **envp)
 {
 	int old_umask;
@@ -2561,6 +2657,7 @@ int main(int argc, char **argv, char **envp)
 					print(linebuf);
 
 					for (part = mbr->part; part; part = part->next) {
+						blkdev_find_part_type(part);
 						//printf("%c- %s [%llu MB] %u:%u\n",
 						//       (part->next) ? '|' : '`',
 						//       part->name, part->size / 1024, part->major, part->minor);
@@ -2572,8 +2669,10 @@ int main(int argc, char **argv, char **envp)
 						ptr = addchr(ptr, ' ');
 						ptr = addchr(ptr, '[');
 						ptr = adduint(ptr, part->size / 1024);
-						ptr = addcst(ptr, " MB]\n");
-						print(linebuf);
+						ptr = addcst(ptr, " MB]");
+						ptr = addchr(ptr, ' ');
+						ptr = addcst(ptr, part->type);
+						println(linebuf);
 					}
 				}
 
