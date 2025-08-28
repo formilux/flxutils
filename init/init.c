@@ -260,6 +260,7 @@ enum {
 	TOK_TA,                /* ta : tar "t"/"x"/"xv" archive $2 to dir #3 */
 	TOK_TD,                /* td : test /dev for devtmpfs support */
 	TOK_TE,                /* te : test an environment variable */
+	TOK_TN,                /* tn : test that argument is non-empty */
 	TOK_UM,                /* um : umount a filesystem */
 	TOK_WK,                /* wk : wait key */
 	/* better add new commands above */
@@ -322,6 +323,7 @@ static const struct token tokens[] = {
 	/* TOK_TA */ { "ta",   0, 3, },
 	/* TOK_TD */ { "td",   0, 0, },
 	/* TOK_TE */ { "te",   0, 1, },
+	/* TOK_TN */ { "tn",   0, 1, },
 	/* TOK_UM */ { "um", 'O', 1, },
 	/* TOK_WK */ { "wk",   0, 2, },
 	/**** end of commands dumped by the help command ****/
@@ -374,6 +376,7 @@ static const char tokens_help[] =
 	/* TOK_TA */ "TAr [x|xv|t] file [dir]\0"
 	/* TOK_TD */ "TestDev : test if /dev is devtmpfs\0"
 	/* TOK_TE */ "TEst var=val\0"
+	/* TOK_TN */ "TestNon-empty ${var}: returns true if set and not empty\0"
 	/* TOK_UM */ "UMount dir\0"
 	/* TOK_WK */ "WaitKey prompt delay\0"
 	;
@@ -2347,6 +2350,12 @@ int main(int argc, char **argv, char **envp)
 					env++;
 				}
 				error = token != TOK_EN && (*env == NULL);
+				goto finish_cmd;
+			} else if (token == TOK_TN) {
+				/* tn ${string} : test if expands to non-empty string.
+				 * The result is OK if non-empty, NOK if not.
+				 */
+				error = !(cfg_args[1] && *cfg_args[1]);
 				goto finish_cmd;
 			} else if (token == TOK_SE) {
 				/* se name [value]: setenv name [value].
