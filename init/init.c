@@ -796,26 +796,75 @@ static void env_size(char **envp, int *bytes, int *entries)
 	}
 }
 
-/* duplicate old_env into new_env and append to it variable <name>=<value>.
- * The <new_env> must have been allocated large enough to hold <old_env>+1
- * entries (+NULL) and <env_store> must be large enough to hold <old_env>
- * + the new variable (name+value+2). The required sizes before modification
- * can be obtained by env_size() above.
+/* duplicate <old_env> into <new_env> using <env_store> for the contents, and
+ * terminate it with a NULL. The caller must ensure that all contents fit into
+ * env_store and new_env, including the trailing NULL for new_env. This may be
+ * used when expanding the allocation area for adding new entries. <env_store>
+ * is updated, and the pointer to the final NULL is returned in order to help
+ * with appending new variables.
  */
-static void env_dup_and_append(char **new_env, char **old_env, char *env_store, const char *name, const char *value)
+static char **env_dup(char **new_env, char **old_env, char **env_store)
 {
-	*new_env = env_store;
-	while (*old_env != NULL) {
-		env_store = addcst(env_store, *(old_env++)) + 1;
-		*(++new_env) = env_store;
-	}
-	/* add our new variable */
-	env_store = addcst(env_store, name);
-	env_store = addchr(env_store, '=');
-	env_store = addcst(env_store, value);
+	char *store = *env_store;
+
+	while (*old_env)
+		store = addcst(*(new_env++) = store, *(old_env++)) + 1;
+	*env_store = store;
 
 	/* and the final NULL */
-	*(++new_env) = 0;
+	*new_env = NULL;
+	return new_env;
+}
+
+/* append line <line> to the environment in <env_tail> stored at <env_store>.
+ * The caller is responsible for making sure that there is at least one entry
+ * left in <env_tail> so that the NULL it contain can be replaced and appended
+ * again, and enough bytes left in <env_store> for the line and its trailing 0.
+ * <env_store> is updated to point past the trailing zero and <env_tail> is
+ * updated to point to the new NULL, so that multiple calls can be chained for
+ * multiple variables. The function is expected to only be called after
+ * env_dup() or itself, so that <env_store> already points to the first byte
+ * past the end of the environment, and <env_tail> points to the final NULL.
+ */
+static char **env_append_line(char **env_tail, char **env_store, const char *line)
+{
+	char *store = *env_store;
+
+	*env_tail = store;
+	/* and the final NULL */
+	*(++env_tail) = NULL;
+	store = addcst(store, line) + 1;
+	*env_store = store;
+	return env_tail;
+}
+
+/* append line "name=value" to the environment in <env_tail> stored at
+ * <env_store>. The caller is responsible for making sure that there is at
+ * least one entry left in <env_tail> so that the NULL it contain can be
+ * replaced and appended again, and enough bytes left in <env_store> for the
+ * line and its trailing 0. <env_store> is updated to point past the trailing
+ * zero and the pointer to the final NULL is returned so that multiple calls
+ * can be chained for multiple variables. The function is expected to only be
+ * called after env_dup() or itself, so that <env_store> already points to the
+ * first byte past the end of the environment, and <env_tail> points to the
+ * final NULL.
+ */
+static char **env_append_var(char **env_tail, char **env_store, const char *name, const char *value)
+{
+	char *store = *env_store;
+
+	/* add our new variable */
+	*env_tail = store;
+
+	/* and the final NULL */
+	*(++env_tail) = NULL;
+
+	store = addcst(store, name);
+	store = addchr(store, '=');
+	store = addcst(store, value);
+	store++; // \0
+	*env_store = store;
+	return env_tail;
 }
 
 /* opens file <file> and reads up to <size> bytes from it into <buffer>, then
@@ -2468,7 +2517,9 @@ int main(int argc, char **argv, char **envp)
 					env_size(envp, &env_bytes, &env_entries);
 					new_envp   = alloca((env_entries + 1) * sizeof(*new_envp));
 					env_store  = alloca(env_bytes + name_len + value_len + 2); // name=val\0
-					env_dup_and_append(new_envp, envp, env_store, cfg_args[1], cfg_args[2]);
+					env_append_var(env_dup(new_envp, envp, &env_store),
+						       &env_store, cfg_args[1], cfg_args[2]);
+
 					envp = new_envp;
 				}
 			} else if (token == TOK_EQ) {
