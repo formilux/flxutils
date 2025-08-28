@@ -2346,7 +2346,7 @@ int main(int argc, char **argv, char **envp)
 						break;
 					env++;
 				}
-				error = (*env == NULL);
+				error = token != TOK_EN && (*env == NULL);
 				goto finish_cmd;
 			} else if (token == TOK_SE) {
 				/* se name [value]: setenv name [value].
