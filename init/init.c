@@ -2029,14 +2029,15 @@ static void multidev(mode_t mode, uid_t uid, gid_t gid, uint8_t major, uint8_t m
 	}
 }
 
-/* adds a blkdev to an existing list (part or next). Appends to the end of the
- * last ->next
+/* Checks in a blkdev list if <name> appears and returns a pointer to its
+ * predecessor if found, or to the last pointer pointing to NULL if not found,
+ * in order to know where to add the new device.
  */
-static void blkdev_add(struct blkdev **root, struct blkdev *dev)
+static struct blkdev **blkdev_find_part(struct blkdev **root, const char *name)
 {
-	while (*root)
+	while (*root && !streq((*root)->name, name))
 		root = &(*root)->next;
-	*root = dev;
+	return root;
 }
 
 /* finds from the root where a device name should be attached:
@@ -2055,9 +2056,6 @@ static struct blkdev **blkdev_find_parent(struct blkdev **root, const char *name
 {
 	int namelen = my_strlen(name);
 	int commlen;
-
-	if (namelen && (unsigned char)(name[namelen - 1] - '0') > 9)
-		return &(*root)->next; // different device
 
 	while (*root) {
 		for (commlen = 0; name[commlen] && name[commlen] == (*root)->name[commlen]; commlen++)
@@ -2717,6 +2715,15 @@ int main(int argc, char **argv, char **envp)
 					/* the parent is the start of a sub-tree where to attach
 					 * that new device, let's fill the struct and attach it.
 					 */
+					parent = blkdev_find_part(parent, dev);
+
+					/* if the parent doesn't point to NULL, it points to that
+					 * device, hence it's already there.
+					 */
+					if (*parent)
+						continue;
+
+					/* it was not there, let's add it */
 					spare->next = spare->part = NULL;
 					spare->major = major;
 					spare->minor = minor;
@@ -2725,7 +2732,7 @@ int main(int argc, char **argv, char **envp)
 					addcst(spare->name, dev);
 					spare->flags = 0;
 					spare->type[0] = 0;
-					blkdev_add(parent, spare);
+					*parent = spare;
 					spare = NULL;
 				}
 
