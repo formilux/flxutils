@@ -367,7 +367,7 @@ static const char tokens_help[] =
 	/* TOK_IN */ "INit path\0"
 	/* TOK_LN */ "LN target link : symlink\0"
 	/* TOK_LO */ "LOsetup /dev/loopX file\0"
-	/* TOK_LP */ "ListPartitions\0"
+	/* TOK_LP */ "ListPartitions [-r] : -r for rescan\0"
 	/* TOK_LS */ "LS [-e|-l] dir\0"
 	/* TOK_MA */ "uMAsk umask\0"
 	/* TOK_MD */ "MkDir path [mode]\0"
@@ -2654,6 +2654,10 @@ int main(int argc, char **argv, char **envp)
 				int arg_pos, best_pos = MAX_CFG_ARGS;
 				char *dev;
 				char *ptr;
+
+				/* "lp -r" rescans the whole table */
+				if (token == TOK_LP && cfg_args[1] && cfg_args[1][0] == '-' && cfg_args[1][1] == 'r')
+					blkdevs = NULL;
 
 				if (read_from_file("/proc/partitions", parts, sizeof(parts)) == -1) {
 					error = 1;
