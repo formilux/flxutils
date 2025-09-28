@@ -3046,7 +3046,7 @@ int main(int argc, char **argv, char **envp)
 			} /* end of switch() */
 
 			/* other options are reserved for pid 1/linuxrc/prompt mode only */
-			if (!pid1 && !linuxrc && cmd_input != INPUT_KBD) {
+			if (!pid1 && !linuxrc && !single_cmd && cmd_input != INPUT_KBD) {
 				debug("Command ignored since pid not 1\n");
 				error = context[brace_level].error;
 				continue;
