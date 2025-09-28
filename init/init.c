@@ -89,6 +89,16 @@
 
 #include <linux/random.h>
 
+#if defined(__NR_kexec_file_load)
+#include <linux/kexec.h>
+# ifdef NOLIBC
+#  define syscall my_syscall5
+# endif
+# ifndef LINUX_REBOOT_CMD_KEXEC
+#  define LINUX_REBOOT_CMD_KEXEC 0x45584543
+# endif
+#endif
+
 /*
  * compatibility defines in case they are missing
  */
@@ -251,6 +261,9 @@ enum {
 	TOK_LO,                /* lo : losetup */
 	TOK_LP,                /* lp : list partitions */
 	TOK_LS,                /* ls : list files in DIR $1 */
+#if defined(__NR_kexec_file_load)
+	TOK_KX,                /* kx : kexec */
+#endif
 	TOK_MA,                /* ma : set umask */
 	TOK_MD,                /* md : mkdir */
 	TOK_MT,                /* mt : mount */
@@ -315,6 +328,9 @@ static const struct token tokens[] = {
 	/* TOK_LO */ { "lo", 'l', 2, },
 	/* TOK_LP */ { "lp",   0, 0, },
 	/* TOK_LS */ { "ls",   0, 0, },
+#if defined(__NR_kexec_file_load)
+	/* TOK_KX */ { "kx",   0, 2, },
+#endif
 	/* TOK_MA */ { "ma", 'U', 1, },
 	/* TOK_MD */ { "md", 'D', 1, },
 	/* TOK_MT */ { "mt", 'M', 3, },
@@ -369,6 +385,9 @@ static const char tokens_help[] =
 	/* TOK_LO */ "LOsetup /dev/loopX file\0"
 	/* TOK_LP */ "ListPartitions [-r] : -r for rescan\0"
 	/* TOK_LS */ "LS [-e|-l] dir\0"
+#if defined(__NR_kexec_file_load)
+	/* TOK_KX */ "KeXec kernel initrd|- [cmdline*|-]\0"
+#endif
 	/* TOK_MA */ "uMAsk umask\0"
 	/* TOK_MD */ "MkDir path [mode]\0"
 	/* TOK_MT */ "MounT dev[(major:minor)] mnt type [{rw|ro} [flags]]\0"
@@ -3347,6 +3366,96 @@ int main(int argc, char **argv, char **envp)
 			case TOK_LS:
 				error = -list_dir(cfg_args[1], cfg_args[2]);
 				break;
+#if defined(__NR_kexec_file_load)
+			case TOK_KX: { /* kx: kexec kernel initrd [cmdline*] */
+				int retries = 2;
+				char *p;
+				int kfd, ifd;
+				int arg;
+
+				if ((kfd = open(cfg_args[1], O_RDONLY, 0)) < 0) {
+					error_num = errno;
+					error = 1;
+					debug("(kexec : cannot open kernel\n");
+					break;
+				}
+
+				if (streq(cfg_args[2], "-"))
+					ifd = -1; // no initrd provided
+				else if ((ifd = open(cfg_args[2], O_RDONLY, 0)) < 0) {
+					error_num = errno;
+					error = 1;
+					debug("(kexec : cannot open initrd\n");
+					close(kfd);
+					break;
+				}
+
+				/* cmdline could be:
+				 *   - empty: reuse /proc/cmdline
+				 *   - "-" : don't pass anything
+				 *    - something: pass this.
+				 */
+
+				/* cfg_args[] is made of pointers to cfg_data,
+				 * so all of them collectively fit into cfg_data
+				 * and may even perfectly match. Let's rebuild
+				 * the line from cfg_args[3+] into cfg_args[0].
+				 */
+
+				p = cfg_args[0];
+				if (!cfg_args[3]) {
+					/* Use cmdline, which is already filled for up to
+					 * cmdline_len chars, however it may have holes in
+					 * the middle that we must turn back to spaces. We
+					 * make cfg_args[0] point to it as well, and p point
+					 * to the final zero.
+					 */
+					find_arg(""); // make sure to load cmdline if not already.
+					for (p = cmdline; p < cmdline + cmdline_len - 1; p++) {
+						if (!*p)
+							*p = ' ';
+					}
+					cfg_args[0] = cmdline;
+				} else if (streq(cfg_args[3], "-")) {
+					/* do not pass args */
+					*p = 0;
+				} else {
+					/* recompose the line */
+					for (arg = 3; cfg_args[arg]; arg++) {
+						if (p != cfg_args[0])
+							*(p++) = ' ';
+						p += my_strlcpy(p, cfg_args[arg], cfg_data + sizeof(cfg_data) - p);
+					}
+				}
+
+				/* Here we prepare to try again because often the load
+				 * fails with EADDRNOTAVAIL on first try and succeeds on
+				 * second one.
+				 */
+				while (retries > 0) {
+					if (syscall(__NR_kexec_file_load, kfd, ifd,
+						    p - cfg_args[0] + 1, cfg_args[0],
+						    KEXEC_ARCH_DEFAULT | (ifd < 0 ? KEXEC_FILE_NO_INITRAMFS : 0)) == 0) {
+						error = 0;
+						break;
+					}
+					error_num = errno;
+					error = 1;
+					debug("(kexec : cannot load files\n");
+					if (error_num != EADDRNOTAVAIL)
+						break;
+					retries--;
+				}
+
+				if (ifd >= 0)
+					close(ifd);
+				close(kfd);
+
+				if (error)
+					break;
+				/* fall through */
+			}
+#endif
 			case TOK_HA:  /* ha : halt */
 			case TOK_PO:  /* po : power off */
 			case TOK_RB:  /* rb : reboot */
@@ -3354,6 +3463,9 @@ int main(int argc, char **argv, char **envp)
 				error = reboot(token == TOK_HA ? LINUX_REBOOT_CMD_HALT :
 				               token == TOK_PO ? LINUX_REBOOT_CMD_POWER_OFF :
 				               token == TOK_RB ? LINUX_REBOOT_CMD_RESTART :
+#if defined(__NR_kexec_file_load)
+				               token == TOK_KX ? LINUX_REBOOT_CMD_KEXEC :
+#endif
 				               /* TOK_SP */      LINUX_REBOOT_CMD_SW_SUSPEND);
 				error_num = errno;
 				break;
