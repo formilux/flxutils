@@ -1550,7 +1550,11 @@ char *find_arg(char *arg)
 	if (cmdline_len <= 0) {
 		if ((cmdline_len = read_from_file("/proc/cmdline", cmdline, sizeof(cmdline))) <= 0)
 			return NULL;
-		cmdline_len++; // include the trailing zero
+		/* trim trailing LFs */
+		while (cmdline_len > 0 && cmdline[cmdline_len-1] == '\n')
+			cmdline[--cmdline_len] = 0;
+		/* always include trailing zero */
+		cmdline_len++;
 	}
 
 	/* search for the required arg in cmdline */
