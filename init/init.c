@@ -3586,8 +3586,13 @@ int main(int argc, char **argv, char **envp)
 		debug(cfg_file); debug("\n");
 	}
 
-	if (rebuild || single_cmd) {
-		debug("end of rebuild or single_cmd\n");
+	if (single_cmd) {
+		debug("end of single_cmd\n");
+		return error;
+	}
+
+	if (rebuild) {
+		debug("end of rebuild\n");
 		/* nothing more to do */
 		return 0;
 	}
