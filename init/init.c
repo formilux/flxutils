@@ -89,11 +89,17 @@
 
 #include <linux/random.h>
 
+#ifndef NOLIBC
+# define my_syscall0 syscall
+# define my_syscall1 syscall
+# define my_syscall2 syscall
+# define my_syscall3 syscall
+# define my_syscall4 syscall
+# define my_syscall5 syscall
+#endif
+
 #if defined(__NR_kexec_file_load)
 #include <linux/kexec.h>
-# ifdef NOLIBC
-#  define syscall my_syscall5
-# endif
 # ifndef LINUX_REBOOT_CMD_KEXEC
 #  define LINUX_REBOOT_CMD_KEXEC 0x45584543
 # endif
@@ -131,7 +137,7 @@ struct linux_dirent64 {
 #if (!defined(__GLIBC__) || __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 30))
 static long getdents64(int fd, struct linux_dirent64 *dirp, unsigned long count)
 {
-	return syscall(SYS_getdents64, fd, dirp, count);
+	return my_syscall3(SYS_getdents64, fd, dirp, count);
 }
 #endif
 
@@ -3433,9 +3439,9 @@ int main(int argc, char **argv, char **envp)
 				 * second one.
 				 */
 				while (retries > 0) {
-					if (syscall(__NR_kexec_file_load, kfd, ifd,
-						    p - cfg_args[0] + 1, cfg_args[0],
-						    KEXEC_ARCH_DEFAULT | (ifd < 0 ? KEXEC_FILE_NO_INITRAMFS : 0)) == 0) {
+					if (my_syscall5(__NR_kexec_file_load, kfd, ifd,
+					                p - cfg_args[0] + 1, cfg_args[0],
+					                KEXEC_ARCH_DEFAULT | (ifd < 0 ? KEXEC_FILE_NO_INITRAMFS : 0)) == 0) {
 						error = 0;
 						break;
 					}
