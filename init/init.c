@@ -458,6 +458,44 @@ static const char tokens_help[] =
 	/* TOK_WK */ "WaitKey prompt delay\0"
 	;
 
+/* errno names from 1, each ending with \0. The list ends on \xFF. */
+static const char errstr[] = ""
+        /* EPERM */     "PERM\0"
+        /* ENOENT */    "NOENT\0"
+        /* ESRCH */     "SRCH\0"
+        /* EINTR */     "INTR\0"
+        /* EIO */       "IO\0"
+        /* ENXIO */     "NXIO\0"
+        /* E2BIG */     "2BIG\0"
+        /* ENOEXEC */   "NOEXEC\0"
+        /* EBADF */     "BADF\0"
+        /* ECHILD */    "CHILD\0"
+        /* EAGAIN */    "AGAIN\0"
+        /* ENOMEM */    "NOMEM\0"
+        /* EACCES */    "ACCES\0"
+        /* EFAULT */    "FAULT\0"
+        /* ENOTBLK */   "NOTBLK\0"
+        /* EBUSY */     "BUSY\0"
+        /* EEXIST */    "EXIST\0"
+        /* EXDEV */     "XDEV\0"
+        /* ENODEV */    "NODEV\0"
+        /* ENOTDIR */   "NOTDIR\0"
+        /* EISDIR */    "ISDIR\0"
+        /* EINVAL */    "INVAL\0"
+        /* ENFILE */    "NFILE\0"
+        /* EMFILE */    "MFILE\0"
+        /* ENOTTY */    "NOTTY\0"
+        /* ETXTBSY */   "TXTBSY\0"
+        /* EFBIG */     "FBIG\0"
+        /* ENOSPC */    "NOSPC\0"
+        /* ESPIPE */    "SPIPE\0"
+        /* EROFS */     "ROFS\0"
+        /* EMLINK */    "MLINK\0"
+        /* EPIPE */     "PIPE\0"
+        /* EDOM */      "DOM\0"
+        /* ERANGE */    "RANGE\0"
+	"\xff\0"; /* end marker */
+
 /* mandatory device nodes : name, mode, gid, major, minor */
 static const struct dev_node dev_nodes[] =  {
 	/* console must always be at the first location */
@@ -753,6 +791,23 @@ static char *addhex(char *dest, uint8_t num)
 	*dest++ = (c > 9) ? (c - 10 + 'a') : (c + '0');
 	*dest = '\0';
 	return dest;
+}
+
+/* looks up errno value <num> into errstr and retuns a pointer to its name if
+ * found otherwise NULL.
+ */
+static const char *find_errstr(int num)
+{
+	const char *ret = errstr;
+
+	while (*ret != '\xff') {
+		/* ok valid names present */
+		if (!--num)
+			return ret;
+		while (*(ret++))
+			;
+	}
+	return NULL;
 }
 
 /* breaks a 3-fields, comma-separated string into 3 fields */
@@ -2431,7 +2486,14 @@ int main(int argc, char **argv, char **envp)
 				ret_msg = NULL;
 				p = addcst(p, error ? "ER (" : "OK\n>");
 				if (error) {
+					const char *errname;
+
 					p = adduint(p, error_num);
+					errname = find_errstr(error_num);
+					if (errname) {
+						p = addcst(p, " ");
+						p = addcst(p, errname);
+					}
 					p = addcst(p, ")\n>");
 				}
 
