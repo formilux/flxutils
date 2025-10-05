@@ -111,7 +111,11 @@
 #endif
 
 #if defined(__NR_finit_module) || defined(__NR_delete_module)
-# include <linux/module.h>
+// Note: file only present starting with kernel 3.8
+//# include <linux/module.h>
+# if !defined(MODULE_INIT_IGNORE_MODVERSIONS)
+#  define MODULE_INIT_IGNORE_MODVERSIONS 1
+# endif
 # if !defined(MODULE_INIT_COMPRESSED_FILE)
 #  define MODULE_INIT_COMPRESSED_FILE 4
 # endif
