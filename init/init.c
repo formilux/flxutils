@@ -3178,11 +3178,46 @@ int main(int argc, char **argv, char **envp)
 					type = find_fs_type(mntdev);
 
 				if (!type || mount(mntdev, cfg_args[2], type, MS_MGC_VAL | mntarg, cfg_args[5]) == -1) {
-					error_num = errno;
+					if (type)
+						error_num = errno;
 					error = 1;
-					debug("<M>ount : error during mount()\n");
-				}
+					if (type != cfg_args[3]) {
+						/* FS was set to "auto", let's check /proc/filesystems */
+						char fstypes[1024];
+						char *ptr, *next;
+						int len;
 
+						len = read_from_file("/proc/filesystems", fstypes, sizeof(fstypes));
+						if (len < 0)
+							fstypes[0] = 0;
+
+						for (ptr = fstypes; *ptr; ptr = next) {
+							/* put a zero at the end of the line */
+							for (next = ptr; *next; next++) {
+								if (*next == '\n') {
+									*(next++) = 0;
+									break;
+								}
+							}
+
+							if (*ptr == 'n') // "nodev"
+								continue;
+
+							while (*ptr == ' ' || *ptr == '\t')
+								ptr++;
+
+							/* now we have an FS type in <ptr> */
+							if (mount(mntdev, cfg_args[2], ptr, MS_MGC_VAL | mntarg, cfg_args[5]) != -1) {
+								error = 0;
+								break; // succeeded
+							}
+							if (!type) // only update errno if it was not set
+								error_num = errno;
+						}
+					}
+					if (error)
+						debug("<M>ount : error during mount()\n");
+				}
 				break;
 			}
 			case TOK_BR:
