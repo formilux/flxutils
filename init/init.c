@@ -288,6 +288,7 @@ enum {
 	TOK_RM,                /* rm : remove files */
 	TOK_RX,                /* rx : execute under chroot */
 	TOK_SE,                /* se : setenv */
+	TOK_SL,                /* sl : sleep */
 	TOK_SP,                /* sp : suspend */
 	TOK_ST,                /* st : stat file existence */
 	TOK_SW,                /* sw : switch root = chdir + chroot . + reopen console */
@@ -355,6 +356,7 @@ static const struct token tokens[] = {
 	/* TOK_RM */ { "rm",   0, 1, },
 	/* TOK_RX */ { "rx", 'R', 2, },
 	/* TOK_SE */ { "se", 'S', 1, },
+	/* TOK_SL */ { "sl",   0, 1, },
 	/* TOK_SP */ { "sp",   0, 0, },
 	/* TOK_ST */ { "st",   0, 1, },
 	/* TOK_SW */ { "sw",   0, 1, },
@@ -412,6 +414,7 @@ static const char tokens_help[] =
 	/* TOK_RM */ "RM file\0"
 	/* TOK_RX */ "Remote-eXec dir cmd [args] : fork+chroot+execve\0"
 	/* TOK_SE */ "SetEnv name [value]\0"
+	/* TOK_SL */ "SLeep sec[.frac]: sleep this delay or forever if <0 or 'inf'\0"
 	/* TOK_SP */ "SusPend\0"
 	/* TOK_ST */ "STat file\0"
 	/* TOK_SW */ "SWitchroot root\0"
@@ -2599,6 +2602,27 @@ int main(int argc, char **argv, char **envp)
 
 				error = !res || !streq(res, "devtmpfs");
 				goto finish_cmd;
+			} else if (token == TOK_SL) {
+				/* sl delay[.frac] : sleep for <delay> sec or forever if <0 or 'inf' */
+				unsigned long long sec;
+				char *delay = cfg_args[1];
+				unsigned int digit;
+				struct timeval tv, *tv_ptr;
+				char *dot;
+
+				tv_ptr = NULL;
+				if (!streq(cfg_args[1], "inf") && *(cfg_args[1]) != '-') {
+					dot = my_atoull_next(delay, &sec);
+					tv.tv_sec = sec;
+					tv.tv_usec = 0;
+					if (*(dot++) == '.') {
+						unsigned int mul = 1000000;
+						while ((mul /= 10) && (digit = (unsigned char)*(dot++) - '0') <= 9)
+							tv.tv_usec += mul * digit;
+					}
+					tv_ptr = &tv;
+				}
+				select(0, NULL, NULL, NULL, tv_ptr);
 			} else if (token == TOK_HE) {
 				int i;
 				const char *help = tokens_help;

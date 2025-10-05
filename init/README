@@ -160,6 +160,9 @@ se        <name> [<value>]
           replace it if it already exists. Without a value, unsets environment
           variable <name>.
 --------------------------------------------------------------------------------
+sl        <delay>[.<frac>]
+          Sleep for <delay> seconds, or forever if negative or "inf"
+--------------------------------------------------------------------------------
 sp        <none>
           Suspend (may not always be supported).
 --------------------------------------------------------------------------------
