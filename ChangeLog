@@ -1,3 +1,43 @@
+2025/10/05
+- init: fix build with glibc 2.30 and above
+- init: add a new "rf" (random feed) command
+- init: make it possible to execute commands inline with -z
+- scripts/pcidev: properly export the path
+- res: add a simple IP/hostname resolution command
+- scripts/pcidev: deduplicate module names in the per-device list
+- init: add "env" to show the environment
+- init: add a setenv command
+- init: centralize file reading into a single function
+- init: add function my_atoull_next() to parse and skip a number
+- init: add new command "lp" to list usable partitions
+- init: fix return value of "en"
+- init: add a "tn" command to test for non-empty string
+- init: also detect the file system types with "lp"
+- init: revisit the internal setenv api
+- init: add "fp" to find the system partitions
+- init: lp: fix existing mbr and partition detection
+- init/examples: permit to interrupt the XIP loader via LOADERSHELL=1
+- init: lp: support rescanning the whole partition table
+- init: fix single-command mode limitations to certain commands
+- init: trim the trailing LF from /proc/cmdline
+- init: add kx to implement kexec_file_load()
+- init: add missing commands to the README file
+- init: define the syscalls in a glibc-compatible way
+- init: silence a getdents64() warning on glibc
+- init: silence a warning on gettimeofday() with glibc
+- init: add command "sl" to sleep for a delay
+- init: split partition and FS type detection into two functions
+- init: support type "auto" for "mt"
+- init: also check /proc/filesystems for type "auto" when mounting
+- init: return the status code in single-command mode (-z)
+- init: add a minimal modprobe command ("mp")
+- init: add support for loading compressed modules
+- init: add command "mr" to remove a loaded kernel module
+- init: make the code compile with pre-3.8 UAPI headers
+- init: add command "ml" to list loaded kernel modules
+- init: display a shortened errno name with errors
+- released flxutils-0.1.38
+
 2021/04/02
 - released flxutils-0.1.37
 - lcd: make lcdwrite conflict-resistant
