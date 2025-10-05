@@ -121,6 +121,12 @@ ma    U   <mask>
 md    D   <path> [<mode>]
           create a directory <path> with mode <mode>, or 0755 if unspecified.
 --------------------------------------------------------------------------------
+mp        [-f] <file> ["<args>..."]
+          modprobe: try to load kernel module file <file> with optional
+          arguments <args>. If multiple arguments are passed, they must be
+          delimited with spaces and enclosed in quotes to appear as a single
+          argument. It is possible to ignore modversions by passing "-f" first.
+--------------------------------------------------------------------------------
 mt    M   <dev[\[major:minor\]]> <mnt> <type> [ro|rw] [<opts>]
           mount <dev> on <mnt> using file system type <type> and options <opts>.
           The mount may be force read-only using "ro" or read-write using "rw",

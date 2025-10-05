@@ -110,6 +110,10 @@
 # endif
 #endif
 
+#ifdef __NR_finit_module
+# include <linux/module.h>
+#endif
+
 /*
  * compatibility defines in case they are missing
  */
@@ -277,6 +281,9 @@ enum {
 #endif
 	TOK_MA,                /* ma : set umask */
 	TOK_MD,                /* md : mkdir */
+#ifdef __NR_finit_module
+	TOK_MP,                /* mp : modprobe */
+#endif
 	TOK_MT,                /* mt : mount */
 	TOK_MV,                /* mv : move a filesystem */
 	TOK_PO,                /* po : power off */
@@ -345,6 +352,9 @@ static const struct token tokens[] = {
 #endif
 	/* TOK_MA */ { "ma", 'U', 1, },
 	/* TOK_MD */ { "md", 'D', 1, },
+#ifdef __NR_finit_module
+	/* TOK_MP */ { "mp",   0, 1, },
+#endif
 	/* TOK_MT */ { "mt", 'M', 3, },
 	/* TOK_MV */ { "mv", 'K', 2, },
 	/* TOK_PO */ { "po",   0, 0, },
@@ -403,6 +413,9 @@ static const char tokens_help[] =
 #endif
 	/* TOK_MA */ "uMAsk umask\0"
 	/* TOK_MD */ "MkDir path [mode]\0"
+#ifdef __NR_finit_module
+	/* TOK_MP */ "ModProbe [-f] path [\"args...\"]\0"
+#endif
 	/* TOK_MT */ "MounT dev[(major:minor)] mnt type [{rw|ro} [flags]]\0"
 	/* TOK_MV */ "MoVe old_dir new_dir : mount --move\0"
 	/* TOK_PO */ "POwer off\0"
@@ -3314,6 +3327,38 @@ int main(int argc, char **argv, char **envp)
 				}
 				break;
 			}
+#ifdef __NR_finit_module
+			case TOK_MP: {
+				/* mp [-f] path [args...] : modprobe */
+				int flags = 0;
+				int skip = 0;
+				int ret;
+				int fd;
+
+				if (cfg_args[1][0] == '-') {
+					if (cfg_args[1][1] == 'f')
+						flags |= MODULE_INIT_IGNORE_MODVERSIONS;
+					skip++;
+				}
+
+				fd = open(cfg_args[1 + skip], O_RDONLY, 0);
+				if (fd < 0) {
+					error_num = errno;
+					error = 1;
+					debug("ModProbe : open() failed\n");
+					break;
+				}
+
+				ret = my_syscall3(__NR_finit_module, fd, cfg_args[2 + skip] ? cfg_args[2 + skip] : "", flags);
+				if (ret != 0) {
+					error_num = errno = -ret;
+					error = 1;
+					debug("ModProbe : finit_module() failed\n");
+					break;
+				}
+				break;
+			}
+#endif
 			case TOK_MA:
 				/* U <umask> : change umask */
 				umask(base8_to_ul(cfg_args[1]));
