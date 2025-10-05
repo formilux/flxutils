@@ -288,6 +288,7 @@ enum {
 #endif
 	TOK_MA,                /* ma : set umask */
 	TOK_MD,                /* md : mkdir */
+	TOK_ML,                /* ml : modlist */
 #ifdef __NR_finit_module
 	TOK_MP,                /* mp : modprobe */
 #endif
@@ -362,6 +363,7 @@ static const struct token tokens[] = {
 #endif
 	/* TOK_MA */ { "ma", 'U', 1, },
 	/* TOK_MD */ { "md", 'D', 1, },
+	/* TOK_ML */ { "ml",   0, 0, },
 #ifdef __NR_finit_module
 	/* TOK_MP */ { "mp",   0, 1, },
 #endif
@@ -426,6 +428,7 @@ static const char tokens_help[] =
 #endif
 	/* TOK_MA */ "uMAsk umask\0"
 	/* TOK_MD */ "MkDir path [mode]\0"
+	/* TOK_ML */ "ModList: list loaded kernel modules\0"
 #ifdef __NR_finit_module
 	/* TOK_MP */ "ModProbe [-f] path [\"args...\"]\0"
 #endif
@@ -3018,6 +3021,12 @@ int main(int argc, char **argv, char **envp)
 				}
 				goto finish_cmd;
 			}
+			case TOK_ML:
+				println("Module Size Used by State Address");
+				token = TOK_CA;
+				cfg_args[1] = "/proc/modules";
+				cfg_args[2] = NULL;
+				/* fall through TOK_CA to show modules */
 			case TOK_CA:
 			case TOK_CP: {
 				/* ca <src> : cat a file to stdout */
