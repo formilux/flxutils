@@ -51,6 +51,9 @@ cr        <dir>
 ec        [<string>]
           Echo: print the string to the standard output.
 --------------------------------------------------------------------------------
+en        <none>
+          Env: list environment variables to the standard output.
+--------------------------------------------------------------------------------
 eq        <str1> <str2>
           Compare if string <str1> is equal to string <str2>, return OK if so.
 --------------------------------------------------------------------------------
@@ -59,6 +62,19 @@ ex    E   <cmd> [<args>]
 --------------------------------------------------------------------------------
 fi    F   <mode> <uid> <gid> <name>
           Create a fifo <name> owned by <uid>/<gid> with permissions <mode>.
+--------------------------------------------------------------------------------
+fp        <img> <fstype>*
+          Find the system partitions for boot image <img>. <img> supports
+          "active" or "image1" for the first image, "backup" or "image2" for
+          the second image. <fstype> is an optional space-delimited list of
+          file system types to look for (ext2, ext4, xfs and squashfs are
+          supported). If the selected image is found, environment variables
+          "chosen_part" and "chosen_type" are set to the partition and FS type
+          respectively. If the other image is found, environment variables
+          "second_part" and "second_type" are set to the partition and FS type
+          respectively. Partitions are detected as being two of the exact same
+          size (at least 16 MB) somewhere after an ext* partition corresponding
+          to /flash.
 --------------------------------------------------------------------------------
 ha        <none>
           Halt the system.
@@ -80,10 +96,24 @@ ln    L   <src> <dst>
 lo    l   <loopdev> <file>
           Set up loop device loopdev from file <file>.
 --------------------------------------------------------------------------------
+lp        <none>
+          List partitions on supported block devices found in /proc/partitions,
+          with their sizes and detected file system when possible. mtdblock,
+          ramdisks, loop and dm-XX are ignored. This is only used for debugging
+          in interactive mode.
+--------------------------------------------------------------------------------
 ls        [-l|-e] <dir>
           List contents of directory <dir>. Prefix with file type when using
           "-l". Only check if something exists when using "-e", returning OK if
           something is found, NOK otherwise.
+--------------------------------------------------------------------------------
+kx        <kernel> [<initrd>|"-"] [<cmdline>*]
+          Loads kernel image <kernel>, optional initrd image <initrd> (ignored
+          if '-'), and boots it using kexec. If <cmdline> is given, all such
+          arguments become the new kernel's command line arguments. Otherwise
+          an exact copy of the current kernel's arguments is retrieved from
+          /proc/cmdline and passed as-is. The kernel is immediately booted, so
+          the function only returns in case of failure.
 --------------------------------------------------------------------------------
 ma    U   <mask>
           Change program's umask to <mask> (octal)
@@ -125,6 +155,11 @@ rm        <file>...
 rx    R   <dir> <cmd> [<args>]
           Same as "ex" but chroots to <dir> first.
 --------------------------------------------------------------------------------
+se        <name> [<value>]
+          Setenv: with a value, sets environment variable <name> to <value>, or
+          replace it if it already exists. Without a value, unsets environment
+          variable <name>.
+--------------------------------------------------------------------------------
 sp        <none>
           Suspend (may not always be supported).
 --------------------------------------------------------------------------------
@@ -143,6 +178,10 @@ td        <none>
 --------------------------------------------------------------------------------
 te        <var>=<value>
           Test if environment variable <var> equals value <value>.
+--------------------------------------------------------------------------------
+tn        <string>
+          Test if a string is non-empty. This is essentially used to test if an
+          environment variable is set.
 --------------------------------------------------------------------------------
 um    O   <dir>
           Unmount directory <dir>.
