@@ -2118,50 +2118,38 @@ static struct blkdev **blkdev_find_parent(struct blkdev **root, const char *name
 	return root;
 }
 
-/* try to detect and fill the FS type of this partition. We won't try to create
- * the devices, they are expected to already be there.
+/* detect and return the FS type of device (or file) in <path>. A const string
+ * is returned, or NULL if unknown.
  */
-static void blkdev_find_part_type(struct blkdev *part)
+static const char *find_fs_type(const char *path)
 {
 	uint8_t buf[1536 + 1]; /* normally suffices */
-	char *path, *type;
 	uint32_t sig32;
 	int len;
 
-	if (part->flags & BLKD_F_DETECTED)
-		goto leave; // detection already done
-
-	if (part->size < 1024)
-		goto leave; // less than 1MB is not for us
-
-	path = addcst(tmp_path, "/dev/");
-	path = addcst(path, part->name);
-	len = read_from_file(tmp_path, (char*)buf, sizeof(buf));
+	len = read_from_file(path, (char*)buf, sizeof(buf));
 	if (len < sizeof(buf) - 1)
-		goto leave; // short/failed read
+		return NULL; // short/failed read
 
 	/* first, check the 4 first bytes which say a lot about most
 	 * FS. We process them in big endian because that's easier to
 	 * visually match against hex dumps during testing.
 	 */
-	type = NULL;
 	sig32 = (buf[0] * 16777216U) + (buf[1] * 65536) + (buf[2] * 256) + buf[3];
 	switch (sig32) {
-	case 0xffffffff: type = "empty";    break;
-	case 0x1f8b0800: type = "gzip";     break;
-	case 0xfd377a58: type = "xz";       break;
+	case 0xffffffff: return "empty";
+	case 0x1f8b0800: return "gzip";
+	case 0xfd377a58: return "xz";
 	case 0x68737173: // "hsqs"
-		type = buf[0x1c] >= 4 ? "squashfs" : // v4
-			"squashfs3"; // v2 (0x2) or v3 (0x3)
-		break;
-	case 0x42534658: type = "xfs";      break; // "XFSB"
-	case 0x55424923: type = "ubi";      break; // only on mtd
-	case 0x31181006: type = "ubifs";    break; // only on mtd
+		return buf[0x1c] >= 4 ? "squashfs" : // v4
+		                        "squashfs3"; // v2 (0x2) or v3 (0x3)
+	case 0x42534658: return "xfs";   // "XFSB"
+	case 0x55424923: return "ubi";   // only on mtd
+	case 0x31181006: return "ubifs"; // only on mtd
 	case 0x27051956: // uimage/ukernel/uinitrd
-		type = (buf[0x1e] == 2) ? "ukernel" :
-			(buf[0x1e] == 3) ? "uinitrd" :
-			"uimage";
-		break;
+		return (buf[0x1e] == 2) ? "ukernel" :
+		       (buf[0x1e] == 3) ? "uinitrd" :
+		       "uimage";
 	case 0x1985e001: // "jffs2:dirent"
 	case 0x851901e0:
 	case 0x1985e002: // "jffs2:inode"
@@ -2176,20 +2164,14 @@ static void blkdev_find_part_type(struct blkdev *part)
 	case 0x851908e0:
 	case 0x1985e009: // "jffs2:xref"
 	case 0x851909e0:
-		type = "jffs2";
-		break;
+		return "jffs2";
 	}
-
-	if (type)
-		goto got_it;
 
 	/* let's now check for the ext2/3/4 family (0xef53) */
-	if (buf[0x438] == 0x53 && buf[0x439] == 0xef) {
-		type = (buf[0x45c] & 0x04) ? // has_journal
-			(buf[0x460] & 0x40) ? // extent
-			"ext4" : "ext3"	: "ext2";
-		goto got_it;
-	}
+	if (buf[0x438] == 0x53 && buf[0x439] == 0xef)
+		return (buf[0x45c] & 0x04) ? // has_journal
+		       (buf[0x460] & 0x40) ? // extent
+		       "ext4" : "ext3" : "ext2";
 
 	/* fat / mbr ? we'd have 0x55 AA at 0x1FE. */
 	if (buf[0x1fe] == 0x55 && buf[0x1ff] == 0xaa) {
@@ -2203,17 +2185,36 @@ static void blkdev_find_part_type(struct blkdev *part)
 		    (buf[0xb] == 0 && buf[0xc] == 2) && // 512 bytes per sector
 		    (buf[0x10] == 2) && // 2 FATs
 		    (unsigned char)(buf[0x15] - 0xf0) <= 0x0F)
-			type = "vfat";
+			return "vfat";
 		else
-			type = "mbr";
-		goto got_it;
+			return "mbr";
 	}
 
 	/* not found */
-	goto leave;
- got_it:
-	my_strlcpy(part->type, type, sizeof(part->type));
-	part->flags |= BLKD_F_DETECTED;
+	return NULL;
+}
+
+/* try to detect and fill the FS type of this partition. We won't try to create
+ * the devices, they are expected to already be there.
+ */
+static void blkdev_find_part_type(struct blkdev *part)
+{
+	const char *type;
+	char *path;
+
+	if (part->flags & BLKD_F_DETECTED)
+		goto leave; // detection already done
+
+	if (part->size < 1024)
+		goto leave; // less than 1MB is not for us
+
+	path = addcst(tmp_path, "/dev/");
+	path = addcst(path, part->name);
+	type = find_fs_type(tmp_path);
+	if (type) {
+		my_strlcpy(part->type, type, sizeof(part->type));
+		part->flags |= BLKD_F_DETECTED;
+	}
  leave:
 	return;
 }
