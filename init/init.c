@@ -112,6 +112,9 @@
 
 #ifdef __NR_finit_module
 # include <linux/module.h>
+# if !defined(MODULE_INIT_COMPRESSED_FILE)
+#  define MODULE_INIT_COMPRESSED_FILE 4
+# endif
 #endif
 
 /*
@@ -3332,6 +3335,7 @@ int main(int argc, char **argv, char **envp)
 				/* mp [-f] path [args...] : modprobe */
 				int flags = 0;
 				int skip = 0;
+				char buf[4];
 				int ret;
 				int fd;
 
@@ -3348,6 +3352,14 @@ int main(int argc, char **argv, char **envp)
 					debug("ModProbe : open() failed\n");
 					break;
 				}
+
+				/* a module that doesn't present an ELF header is
+				 * likely compressed.
+				 */
+				if (read(fd, buf, sizeof(buf)) >= sizeof(buf) &&
+				    !streqlen(buf, "\x7f""ELF", 4))
+					flags |= MODULE_INIT_COMPRESSED_FILE;
+				lseek(fd, 0, SEEK_SET);
 
 				ret = my_syscall3(__NR_finit_module, fd, cfg_args[2 + skip] ? cfg_args[2 + skip] : "", flags);
 				if (ret != 0) {
