@@ -126,7 +126,8 @@ mt    M   <dev[\[major:minor\]]> <mnt> <type> [ro|rw] [<opts>]
           The mount may be force read-only using "ro" or read-write using "rw",
           though read-only is used by default. If [major:minor] are specified
           (including the square brackets), then the device is created with these
-          elements and permissions mode 0600.
+          elements and permissions mode 0600. If <type> is "auto", then the
+          command tries to detect the FS type.
 --------------------------------------------------------------------------------
 mv    K   <src> <dst>
           Move mounting point of directory <src> to <dst> (mount --move).

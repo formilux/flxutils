@@ -3116,6 +3116,7 @@ int main(int argc, char **argv, char **envp)
 			case TOK_RE: {
 				/* M dev[(major:minor)] mnt type [ {rw|ro} [ flags ] ]: (re)mount dev on mnt (read-only) */
 				char *maj, *min, *end;
+				const char *type;
 				char *mntdev;
 				int mntarg;
 		
@@ -3172,7 +3173,11 @@ int main(int argc, char **argv, char **envp)
 				if (token == TOK_RE)
 					mntarg |= MS_REMOUNT;
 
-				if (mount(mntdev, cfg_args[2], cfg_args[3], MS_MGC_VAL | mntarg, cfg_args[5]) == -1) {
+				type = cfg_args[3];
+				if (streq(type, "auto"))
+					type = find_fs_type(mntdev);
+
+				if (!type || mount(mntdev, cfg_args[2], type, MS_MGC_VAL | mntarg, cfg_args[5]) == -1) {
 					error_num = errno;
 					error = 1;
 					debug("<M>ount : error during mount()\n");
