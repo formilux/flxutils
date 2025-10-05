@@ -63,6 +63,10 @@
   Eg: init2=, INIT=, ...
 */
 
+#ifndef _GNU_SOURCE
+# define _GNU_SOURCE
+#endif
+
 #ifndef NOLIBC
 #include <stdint.h>
 #include <stdio.h>
