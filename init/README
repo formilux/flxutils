@@ -127,6 +127,10 @@ mp        [-f] <file> ["<args>..."]
           delimited with spaces and enclosed in quotes to appear as a single
           argument. It is possible to ignore modversions by passing "-f" first.
 --------------------------------------------------------------------------------
+mr        [-f] <name>
+          modrm: try to unload kernel module <name>. If "-f" is passed, it will
+          be force-unloaded (i.e. ignoring refcount and missing exit function).
+--------------------------------------------------------------------------------
 mt    M   <dev[\[major:minor\]]> <mnt> <type> [ro|rw] [<opts>]
           mount <dev> on <mnt> using file system type <type> and options <opts>.
           The mount may be force read-only using "ro" or read-write using "rw",

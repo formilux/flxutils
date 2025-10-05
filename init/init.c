@@ -110,7 +110,7 @@
 # endif
 #endif
 
-#ifdef __NR_finit_module
+#if defined(__NR_finit_module) || defined(__NR_delete_module)
 # include <linux/module.h>
 # if !defined(MODULE_INIT_COMPRESSED_FILE)
 #  define MODULE_INIT_COMPRESSED_FILE 4
@@ -287,6 +287,9 @@ enum {
 #ifdef __NR_finit_module
 	TOK_MP,                /* mp : modprobe */
 #endif
+#ifdef __NR_delete_module
+	TOK_MR,                /* mr : rmmod */
+#endif
 	TOK_MT,                /* mt : mount */
 	TOK_MV,                /* mv : move a filesystem */
 	TOK_PO,                /* po : power off */
@@ -358,6 +361,9 @@ static const struct token tokens[] = {
 #ifdef __NR_finit_module
 	/* TOK_MP */ { "mp",   0, 1, },
 #endif
+#ifdef __NR_delete_module
+	/* TOK_MR */ { "mr",   0, 1, },
+#endif
 	/* TOK_MT */ { "mt", 'M', 3, },
 	/* TOK_MV */ { "mv", 'K', 2, },
 	/* TOK_PO */ { "po",   0, 0, },
@@ -418,6 +424,9 @@ static const char tokens_help[] =
 	/* TOK_MD */ "MkDir path [mode]\0"
 #ifdef __NR_finit_module
 	/* TOK_MP */ "ModProbe [-f] path [\"args...\"]\0"
+#endif
+#ifdef __NR_delete_module
+	/* TOK_MR */ "ModRm [-f] name\0"
 #endif
 	/* TOK_MT */ "MounT dev[(major:minor)] mnt type [{rw|ro} [flags]]\0"
 	/* TOK_MV */ "MoVe old_dir new_dir : mount --move\0"
@@ -3366,6 +3375,29 @@ int main(int argc, char **argv, char **envp)
 					error_num = errno = -ret;
 					error = 1;
 					debug("ModProbe : finit_module() failed\n");
+					break;
+				}
+				break;
+			}
+#endif
+#ifdef __NR_delete_module
+			case TOK_MR: {
+				/* mr [-f] name : modrm */
+				int flags = 0;
+				int skip = 0;
+				int ret;
+
+				if (cfg_args[1][0] == '-') {
+					if (cfg_args[1][1] == 'f')
+						flags |= O_NONBLOCK | O_TRUNC;
+					skip++;
+				}
+
+				ret = my_syscall2(__NR_delete_module, cfg_args[1 + skip], flags);
+				if (ret != 0) {
+					error_num = errno = -ret;
+					error = 1;
+					debug("ModRm : delete_module() failed\n");
 					break;
 				}
 				break;
