@@ -2411,28 +2411,28 @@ int main(int argc, char **argv, char **envp)
 			    mount("/dev", "/dev", "tmpfs",    MS_MGC_VAL, "size=4k,nr_inodes=4096,mode=755") == -1) {
 				debug("init/err: cannot mount /dev.\n");
 			}
-			else {
-				int i;
-				if (chdir("/dev") == -1)
-					debug("init/error : cannot chdir(/dev)\n");
-
-				debug("init/info: /dev has been mounted.\n");
-				for (i = 0; i < sizeof(dev_nodes) / sizeof(dev_nodes[0]); i++) {
-					mknod_chown(dev_nodes[i].mode, UID_ROOT, dev_nodes[i].gid,
-						    dev_nodes[i].major, dev_nodes[i].minor, (char *)dev_nodes[i].name);
-				}
-				symlink("/proc/self/fd", "fd");
-				debug("init/info: /dev has been rebuilt.\n");
-
-				chdir("/");
-				/* if /dev was empty, we may not have had /dev/console, so the
-				 * kernel couldn't bind us to it. So let's attach to it now.
-				 */
-				reopen_console();
-			}
 		} else if (!pid1) {
 			/* we don't want to rebuild anything else if pid is not 1 */
 			return 0;
+		}
+
+		/* make sure we're never missing any of the /dev nodes we rely on */
+		if (chdir("/dev") == 0) {
+			int i;
+
+			debug("init/info: /dev has been mounted.\n");
+			for (i = 0; i < sizeof(dev_nodes) / sizeof(dev_nodes[0]); i++) {
+				mknod_chown(dev_nodes[i].mode, UID_ROOT, dev_nodes[i].gid,
+				            dev_nodes[i].major, dev_nodes[i].minor, (char *)dev_nodes[i].name);
+			}
+			symlink("/proc/self/fd", "fd");
+			debug("init/info: /dev has been rebuilt.\n");
+
+			chdir("/");
+			/* if /dev was empty, we may not have had /dev/console, so the
+			 * kernel couldn't bind us to it. So let's attach to it now.
+			 */
+			reopen_console();
 		}
 
 		/* if /dev/root is non-existent, we'll try to make it now */
