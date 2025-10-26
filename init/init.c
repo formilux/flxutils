@@ -1141,7 +1141,16 @@ static int recursive_mkdir(const char *path, mode_t mode)
 /* tries to open /dev/console, and maps 0,1,2 on it if successful */
 static void reopen_console()
 {
+	struct stat statf;
 	int fd;
+
+	/* if any of 0/1/2 is connected to a pipe, there's an upper caller, and
+	 * it generally means we're called inside a container so we must no
+	 * reopen the console or we'll lose connectivity to that controller.
+	 */
+	for (fd = 0; fd < 3; fd++)
+		if (fstat(fd, &statf) == 0 && S_ISFIFO(statf.st_mode))
+			return;
 
 	fd = open("/dev/console", O_RDWR, 0); // fd = 0 (stdin) or -1 (error)
 	if (fd < 0)
