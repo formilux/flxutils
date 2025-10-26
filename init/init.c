@@ -2402,8 +2402,12 @@ int main(int argc, char **argv, char **envp)
 		 * we don't test the presence of /dev/console.
 		 */
 		if (linuxrc || !is_dev_populated()) {
+			char *type = get_dev_type(); // FS type of /dev
+
 			debug("init/info: /dev/console not found, rebuilding /dev.\n");
-			if (mount("/dev", "/dev", "devtmpfs", MS_MGC_VAL, "size=4k,nr_inodes=4096,mode=755") == -1 &&
+			if ((!type || !streq(type, "devtmpfs")) &&
+			    mount("/dev", "/dev", "devtmpfs", MS_MGC_VAL, "size=4k,nr_inodes=4096,mode=755") == -1 &&
+			    (!type || !streq(type, "tmpfs")) && (!type || !streq(type, "ramfs")) &&
 			    mount("/dev", "/dev", "tmpfs",    MS_MGC_VAL, "size=4k,nr_inodes=4096,mode=755") == -1) {
 				debug("init/err: cannot mount /dev.\n");
 			}
