@@ -1138,24 +1138,21 @@ static int recursive_mkdir(const char *path, mode_t mode)
 	return ret;
 }
 
-/* closes 0,1,2 and opens /dev/console on them instead */
+/* tries to open /dev/console, and maps 0,1,2 on it if successful */
 static void reopen_console()
 {
-	int i, fd, oldfd;
-
-	oldfd = dup2(0, 3);	// keep a valid console on fd 3
-
-	for (i = 0; i < 3; i++)
-		close(i);
+	int fd;
 
 	fd = open("/dev/console", O_RDWR, 0); // fd = 0 (stdin) or -1 (error)
 	if (fd < 0)
-		dup2(oldfd, 0); // restore 0 from old console
+		return;
 
-	close(oldfd);
-	dup2(0, 1); // stdout
-	dup2(0, 2); // stderr
-
+	/* OK, let's replace 0/1/2 with this console */
+	dup2(fd, 0);
+	dup2(fd, 1);
+	dup2(fd, 2);
+	if (fd > 2)
+		close (fd);
 	debug("init/info : reopened /dev/console\n");
 }
 
