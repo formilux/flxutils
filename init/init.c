@@ -316,6 +316,7 @@ enum {
 	TOK_TN,                /* tn : test that argument is non-empty */
 	TOK_UM,                /* um : umount a filesystem */
 	TOK_WK,                /* wk : wait key */
+	TOK_WS,                /* ws : wait shutdown */
 	/* better add new commands above */
 	TOK_OB,	               /* {  : begin a command block */
 	TOK_CB,	               /* }  : end a command block */
@@ -391,6 +392,7 @@ static const struct token tokens[] = {
 	/* TOK_TN */ { "tn",   0, 1, },
 	/* TOK_UM */ { "um", 'O', 1, },
 	/* TOK_WK */ { "wk",   0, 2, },
+	/* TOK_WS */ { "ws",   0, 0, },
 	/**** end of commands dumped by the help command ****/
 
 	/* TOK_OB */ { "{",  '{', 0, },
@@ -456,6 +458,7 @@ static const char tokens_help[] =
 	/* TOK_TN */ "TestNon-empty ${var}: returns true if set and not empty\0"
 	/* TOK_UM */ "UMount dir\0"
 	/* TOK_WK */ "WaitKey prompt delay\0"
+	/* TOK_WS */ "WaitShutdown: wait for shutdown/SIGINT/SIGTERM and exits\0"
 	;
 
 /* errno names from 1, each ending with \0. The list ends on \xFF. */
@@ -2312,6 +2315,85 @@ static void blkdev_find_part_type(struct blkdev *part)
 	return;
 }
 
+/* signal handler for termination signals */
+static void sig_handler(int sig)
+{
+	exit(sig + 128);
+}
+
+/* needed to return from sighandler */
+static __attribute__((unused)) void sig_return(void)
+{
+	my_syscall0(__NR_rt_sigreturn);
+}
+
+/* enable SIGINT and SIGTERM which are normally disabled */
+static void enable_signals(void)
+{
+	struct sigaction act = { 0 };
+	sigset_t blk = { 0 };
+
+#ifdef NOLIBC
+	act.sa_flags = SA_RESTORER;
+	act.sa_restorer = sig_return;
+	act.sa_handler = sig_handler;
+
+	my_syscall4(__NR_rt_sigaction, SIGTERM, &act, NULL, sizeof(sigset_t));
+	my_syscall4(__NR_rt_sigaction, SIGINT, &act, NULL, sizeof(sigset_t));
+	my_syscall4(__NR_rt_sigprocmask, SIG_SETMASK, &blk, NULL, sizeof(sigset_t));
+#else
+	signal(SIGTERM, sig_handler);
+	signal(SIGINT, sig_handler);
+	sigprocmask(SIG_SETMASK, &blk, NULL);
+#endif
+}
+
+/* waits for shutdown/halt/reboot on /dev/initctl or SIGINT/SIGTERM, and exits */
+static void wait_shutdown(void)
+{
+	/* format of messages sent to /dev/initctl, in native byte order */
+	union {
+		struct {
+			int     magic;     // 0x03091969
+			int     cmd;       // 1=set runlevel, 6=setenv
+			int     runlevel;  // sent as a char (i.e: level+'0')
+			int     sleeptime; // wait time in seconds
+			char    data[368]; // extra data (e.g. vars)
+		} msg;
+		char raw[384];
+	} initctl_msg;
+	int ofs, ret, fd;
+
+	enable_signals();
+
+	fd = -1;
+	while (1) {
+		if (fd < 0)
+			fd = open("/dev/initctl", O_RDONLY, 0);
+
+		if (fd >= 0) {
+			/* read the message */
+			ofs = 0;
+			do {
+				ret = read(fd, initctl_msg.raw + ofs, sizeof(initctl_msg) - ofs);
+				if (ret > 0)
+					ofs += ret;
+			} while (ret > 0 && ofs < sizeof(initctl_msg));
+
+			if (ret <= 0) {
+				close(fd);
+				fd = -1;
+			} else if (initctl_msg.msg.magic == 0x03091969 && initctl_msg.msg.cmd == 1) {
+				/* set runlevel: exit on any level change */
+				exit(0);
+			}
+		} else {
+			select(0, NULL, NULL, NULL, NULL);
+			exit(0); // a signal was caught
+		}
+	}
+}
+
 int main(int argc, char **argv, char **envp)
 {
 	int old_umask;
@@ -3720,6 +3802,10 @@ int main(int argc, char **argv, char **envp)
 				error_num = errno;
 				break;
 			}
+			case TOK_WS:
+				/* ws: wait shutdown (never returns) */
+				wait_shutdown();
+				break;
 			default:
 				debug("unknown cmd in /.preinit\n");
 				break;

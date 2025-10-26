@@ -208,6 +208,14 @@ wk        <string> <delay>
           Print <string> and wait up to <delay> seconds for a key. Return OK if
           a key is pressed withing the delay, otherwise NOK.
 --------------------------------------------------------------------------------
+ws        <none>
+          Wait for a shutdown signal. It will accept any runlevel change from
+          /dev/initctl (telinit, shutdown, halt, poweroff, reboot), as well as
+          SIGINT or SIGTERM, then exit. This is typically used in containers,
+          in order to let services run until a shutdown is programmed either by
+          the host, or from inside the container. The program will exit once
+          the command completes, and no subsequent command will be evaluated.
+--------------------------------------------------------------------------------
 {         <none>
           Start a block of sequential commands. Useful to group many of them as
           the result of a condition. Up to 10 levels may be embedded. When in
