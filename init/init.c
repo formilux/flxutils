@@ -2334,8 +2334,10 @@ static void enable_signals(void)
 	sigset_t blk = { 0 };
 
 #ifdef NOLIBC
+#ifdef SA_RESTORER
 	act.sa_flags = SA_RESTORER;
 	act.sa_restorer = sig_return;
+#endif
 	act.sa_handler = sig_handler;
 
 	my_syscall4(__NR_rt_sigaction, SIGTERM, &act, NULL, sizeof(sigset_t));
