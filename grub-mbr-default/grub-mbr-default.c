@@ -77,16 +77,6 @@ const char *ltoa(long in)
 		*pos-- = '-';
 	return pos + 1;
 }
-#else
-void perror(const char *msg)
-{
-	int err = errno;
-
-	printerr((msg && *msg) ? msg : "errno");
-	printerr(" : ");
-	printerr(ltoa(err));
-	printerr("\n");
-}
 #endif
 
 void error(int err, char *msg) {
